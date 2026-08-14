@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { ROWS } from '../src/config.js';
 import { Board } from '../src/game/board.js';
 import { Snake, TURN } from '../src/game/snake.js';
 
@@ -11,8 +12,8 @@ describe('Snake', () => {
   describe('spawn', () => {
     for (const dir of [1, -1]) {
       it(`가로 일자로 나오고 머리는 ${dir > 0 ? '오른쪽' : '왼쪽'} 끝이다`, () => {
-        const snake = Snake.spawn(5, 1, dir, 10);
-        assert.ok(snake.cells.every(([r]) => r === 0), '한 줄로 등장');
+        const snake = Snake.spawn(5, 1, dir, 10, 1);
+        assert.ok(snake.cells.every(([r]) => r === 1), '지정한 줄에 한 줄로 등장');
         const cols = snake.cells.map(([, c]) => c);
         assert.equal(Math.max(...cols) - Math.min(...cols), 4, '빈틈 없는 일자');
         assert.equal(snake.head[1], dir > 0 ? Math.max(...cols) : Math.min(...cols));
@@ -70,8 +71,8 @@ describe('Snake', () => {
     it('바닥까지 내려간 뒤 계속 눌러도 모양이 망가지지 않는다', () => {
       const board = new Board();
       const snake = Snake.spawn(4, 1, 1, 10);
-      for (let i = 0; i < 25; i++) snake.turn(0, 1, board);
-      assert.equal(snake.head[0], 19);
+      for (let i = 0; i < 30; i++) snake.turn(0, 1, board);
+      assert.equal(snake.head[0], ROWS - 1);
       assert.ok(noOverlap(snake));
     });
   });
@@ -79,7 +80,7 @@ describe('Snake', () => {
   it('dropDistance는 바닥까지 남은 칸 수다', () => {
     const board = new Board();
     const snake = Snake.spawn(4, 1, 1, 10);
-    assert.equal(snake.dropDistance(board), 19);
+    assert.equal(snake.dropDistance(board), ROWS - 1);
     board.color[10][snake.head[1]] = 1;
     assert.equal(snake.dropDistance(board), 9);
   });

@@ -59,42 +59,46 @@ describe('Board', () => {
   describe('applyGravity (덩어리 강체 낙하)', () => {
     it('한쪽만 받쳐진 조각은 빈칸 위에 걸친 채 모양을 유지한다', () => {
       const board = new Board();
-      put(board, 19, 0, 1, 100);          // 바닥 지지대
-      put(board, 18, 0, 2, 101);
-      put(board, 18, 1, 2, 101);          // 같은 조각의 가로 바
+      const floor = board.rows - 1;
+      put(board, floor, 0, 1, 100);            // 바닥 지지대
+      put(board, floor - 1, 0, 2, 101);
+      put(board, floor - 1, 1, 2, 101);        // 같은 조각의 가로 바
       board.applyGravity();
-      assert.equal(board.color[18][1], 2, '조각이 부서지면 안 된다');
-      assert.equal(board.color[19][1], 0, '아래 빈칸을 메우면 안 된다');
+      assert.equal(board.color[floor - 1][1], 2, '조각이 부서지면 안 된다');
+      assert.equal(board.color[floor][1], 0, '아래 빈칸을 메우면 안 된다');
     });
 
     it('삭제로 두 동강 난 조각은 각각 따로 떨어진다', () => {
       const board = new Board();
+      const floor = board.rows - 1;
       put(board, 15, 3, 1, 200);
-      put(board, 15, 5, 1, 200);          // 같은 id지만 이어져 있지 않다
+      put(board, 15, 5, 1, 200);               // 같은 id지만 이어져 있지 않다
       board.applyGravity();
-      assert.equal(board.color[19][3], 1);
-      assert.equal(board.color[19][5], 1);
+      assert.equal(board.color[floor][3], 1);
+      assert.equal(board.color[floor][5], 1);
       assert.equal(board.color[15][3], 0);
     });
 
     it('L자 덩어리가 모양 그대로 내려온다', () => {
       const board = new Board();
+      const floor = board.rows - 1;
       put(board, 10, 2, 2, 300);
       put(board, 11, 2, 2, 300);
       put(board, 11, 3, 2, 300);
       board.applyGravity();
-      assert.equal(board.color[18][2], 2);
-      assert.equal(board.color[19][2], 2);
-      assert.equal(board.color[19][3], 2);
+      assert.equal(board.color[floor - 1][2], 2);
+      assert.equal(board.color[floor][2], 2);
+      assert.equal(board.color[floor][3], 2);
     });
 
     it('머리 정보가 낙하 후에도 따라온다', () => {
       const board = new Board();
+      const floor = board.rows - 1;
       put(board, 10, 4, 1, 400, 2);
       put(board, 10, 5, 1, 400, 0);
       board.applyGravity();
-      assert.equal(board.head[19][4], 2, '머리 방향 코드 유지');
-      assert.equal(board.head[19][5], 0);
+      assert.equal(board.head[floor][4], 2, '머리 방향 코드 유지');
+      assert.equal(board.head[floor][5], 0);
       assert.equal(board.head[10][4], 0, '원래 자리는 비어야 한다');
     });
   });

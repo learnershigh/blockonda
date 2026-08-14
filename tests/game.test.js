@@ -1,8 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DESIGN_MS, MAX_LEN, MIN_LEN } from '../src/config.js';
+import { DESIGN_MS, MAX_LEN, MIN_LEN, ROWS, SPAWN_ROW } from '../src/config.js';
 import { ACTION, Game, PHASE } from '../src/game/game.js';
+
+const FLOOR = ROWS - 1;
 
 /** 테스트에서 원하는 조각을 정확히 등장시킨다 */
 function gameWith(piece, options) {
@@ -17,6 +19,7 @@ describe('Game', () => {
     const game = new Game();
     assert.equal(game.phase, PHASE.DESIGN);
     assert.equal(game.designLeft, DESIGN_MS);
+    assert.ok(game.snake.cells.every(([r]) => r === SPAWN_ROW), '위에서 한 칸 떨어져 등장');
 
     const lengths = new Set(), dirs = new Set();
     for (let i = 0; i < 200; i++) {
@@ -52,7 +55,7 @@ describe('Game', () => {
 
     game.input(ACTION.SPACE);
     assert.equal(game.placed, 1);
-    assert.ok(game.board.color[19].some(v => v), '바닥에 안착');
+    assert.ok(game.board.color[FLOOR].some(v => v), '바닥에 안착');
   });
 
   it('낙하 중에는 좌우 이동과 소프트드롭만 된다', () => {
@@ -64,7 +67,7 @@ describe('Game', () => {
     assert.deepEqual(game.snake.cells.map(([, c]) => c), before.map(c => c - 1));
 
     game.input(ACTION.DOWN);
-    assert.ok(game.snake.cells.some(([r]) => r === 1), '한 칸 내려간다');
+    assert.ok(game.snake.cells.some(([r]) => r === SPAWN_ROW + 1), '한 칸 내려간다');
 
     const shape = JSON.stringify(game.snake.cells);
     game.input(ACTION.UP);
@@ -81,16 +84,16 @@ describe('Game', () => {
 
   it('등장 자리가 막히면 게임 오버', () => {
     const game = new Game();
-    for (let c = 0; c < 10; c++) game.board.color[0][c] = 1;
+    for (let c = 0; c < 10; c++) game.board.color[SPAWN_ROW][c] = 1;
     game.spawn();
     assert.ok(game.over);
   });
 
-  it('점수: 하드드롭 2점/칸, 삭제 10점/칸', () => {
+  it('점수: 하드드롭 2점/칸', () => {
     const game = gameWith({ len: 4, color: 1, dir: 1 });
     game.confirm();
     game.input(ACTION.SPACE);
-    assert.equal(game.score, 19 * 2, '19칸 하드드롭');
+    assert.equal(game.score, (FLOOR - SPAWN_ROW) * 2);
   });
 
   it('덩어리가 터지면 onClear로 알린다', () => {
@@ -98,7 +101,7 @@ describe('Game', () => {
     const game = gameWith({ len: 4, color: 2, dir: 1 }, { onClear: r => rounds.push(...r) });
 
     // 바닥 한 줄에서 6칸만 미리 채워두고, 남은 4칸을 이번 조각으로 메운다
-    for (let c = 0; c < 6; c++) { game.board.color[19][c] = 2; game.board.pieceId[19][c] = 99; }
+    for (let c = 0; c < 6; c++) { game.board.color[FLOOR][c] = 2; game.board.pieceId[FLOOR][c] = 99; }
     game.confirm();
     while (game.snake.cells.some(([, c]) => c !== 6 && c !== 7 && c !== 8 && c !== 9)) {
       const cols = game.snake.cells.map(([, c]) => c);

@@ -4,15 +4,19 @@ import assert from 'node:assert/strict';
 import { Board } from '../src/game/board.js';
 import { resolveClears } from '../src/game/clear.js';
 
-const fill = (board, r, color, id = 1) => {
-  for (let c = 0; c < board.cols; c++) { board.color[r][c] = color; board.pieceId[r][c] = id; }
+const put = (board, r, c, color, id = 1) => {
+  board.color[r][c] = color;
+  board.pieceId[r][c] = id;
+};
+const fillRow = (board, r, color, id = 1) => {
+  for (let c = 0; c < board.cols; c++) put(board, r, c, color, id);
 };
 const totalPoints = rounds => rounds.reduce((sum, r) => sum + r.points, 0);
 
 describe('resolveClears', () => {
   it('벽~벽 한 줄이면 10칸 x 10점', () => {
     const board = new Board();
-    fill(board, 19, 2);
+    fillRow(board, board.rows - 1, 2);
     const rounds = resolveClears(board);
     assert.equal(rounds.length, 1);
     assert.equal(totalPoints(rounds), 100);
@@ -21,27 +25,29 @@ describe('resolveClears', () => {
 
   it('구불구불 11칸이면 110점이고, 위 블록은 덩어리째 내려온다', () => {
     const board = new Board();
-    for (let c = 0; c <= 4; c++) { board.color[19][c] = 1; board.pieceId[19][c] = 1; }
-    for (let c = 4; c <= 9; c++) { board.color[18][c] = 1; board.pieceId[18][c] = 1; }
-    board.color[17][9] = 2; board.pieceId[17][9] = 2;
+    const floor = board.rows - 1;
+    for (let c = 0; c <= 4; c++) put(board, floor, c, 1);
+    for (let c = 4; c <= 9; c++) put(board, floor - 1, c, 1);
+    put(board, floor - 2, 9, 2, 2);
 
     const rounds = resolveClears(board);
     assert.equal(totalPoints(rounds), 110);
-    assert.equal(board.color[19][9], 2, '남은 블록이 바닥까지 내려온다');
-    assert.equal(board.color[17][9], 0);
+    assert.equal(board.color[floor][9], 2, '남은 블록이 바닥까지 내려온다');
+    assert.equal(board.color[floor - 2][9], 0);
   });
 
   it('터질 게 없으면 아무 일도 없다', () => {
     const board = new Board();
-    [1, 2, 1, 2, 1, 2, 1, 2, 1, 2].forEach((color, c) => { board.color[19][c] = color; });
+    [1, 2, 1, 2, 1, 2, 1, 2, 1, 2].forEach((color, c) => put(board, board.rows - 1, c, color));
     assert.deepEqual(resolveClears(board), []);
   });
 
   it('낙하로 새 연결이 생기면 연쇄 배율이 붙는다', () => {
     const board = new Board();
-    fill(board, 19, 1, 1);
-    for (let c = 0; c <= 9; c++) if (c !== 5) { board.color[18][c] = 2; board.pieceId[18][c] = 2; }
-    board.color[17][5] = 2; board.pieceId[17][5] = 2;
+    const floor = board.rows - 1;
+    fillRow(board, floor, 1, 1);
+    for (let c = 0; c <= 9; c++) if (c !== 5) put(board, floor - 1, c, 2, 2);
+    put(board, floor - 2, 5, 2, 2);
 
     const rounds = resolveClears(board);
     assert.equal(rounds.length, 2, '두 번에 걸쳐 터진다');
@@ -52,8 +58,9 @@ describe('resolveClears', () => {
 
   it('지워진 칸의 색과 머리 정보를 연출용으로 남긴다', () => {
     const board = new Board();
-    fill(board, 19, 3);
-    board.head[19][9] = 2;
+    const floor = board.rows - 1;
+    fillRow(board, floor, 3);
+    board.head[floor][9] = 2;
     const [round] = resolveClears(board);
     assert.equal(round.cells.length, 10);
     assert.ok(round.cells.every(cell => cell.color === 3));

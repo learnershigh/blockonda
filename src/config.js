@@ -1,8 +1,9 @@
 // 게임 규칙/연출 수치를 한곳에 모아둔 곳. 밸런스 조정은 여기만 만지면 된다.
 
 export const COLS = 10;
-export const ROWS = 20;
+export const ROWS = 21;
 export const CELL = 30;                       // 필드 한 칸의 픽셀 크기
+export const SPAWN_ROW = 1;                   // 맨 위에서 한 칸 떨어진 곳에서 등장
 
 export const PREVIEW = { w: 108, h: 84, cell: 15 };
 

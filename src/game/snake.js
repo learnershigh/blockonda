@@ -16,10 +16,10 @@ export class Snake {
   }
 
   /** 가로 일자로 등장. 머리는 바라보는 방향(dir) 쪽 끝 칸. */
-  static spawn(len, color, dir, cols) {
+  static spawn(len, color, dir, cols, row = 0) {
     const start = Math.floor((cols - len) / 2);
     const cells = [];
-    for (let i = 0; i < len; i++) cells.push([0, dir > 0 ? start + len - 1 - i : start + i]);
+    for (let i = 0; i < len; i++) cells.push([row, dir > 0 ? start + len - 1 - i : start + i]);
     return new Snake(cells, color);
   }
 

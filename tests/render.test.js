@@ -6,7 +6,7 @@ import { createStubContext, stubImages } from './helpers/canvas-stub.js';
 stubImages(); // assets.js가 Image를 쓰기 전에 준비
 
 const { loadSprites } = await import('../src/assets.js');
-const { CELL } = await import('../src/config.js');
+const { CELL, ROWS } = await import('../src/config.js');
 const { Game, ACTION } = await import('../src/game/game.js');
 const { Effects } = await import('../src/render/effects.js');
 const { drawBoard, drawPreview } = await import('../src/render/renderer.js');
@@ -97,7 +97,7 @@ describe('렌더링', () => {
       game.input(ACTION.SPACE);
 
       drawBoard(ctx, game, null);
-      const stackHeads = heads(ctx.draws.filter(d => d.alpha === 1 && d.y > 19 * CELL));
+      const stackHeads = heads(ctx.draws.filter(d => d.alpha === 1 && d.y > (ROWS - 1) * CELL));
       assert.equal(stackHeads.length, 1);
       assert.deepEqual(stackHeads[0].nose, [1, 0]);
     });
@@ -107,7 +107,7 @@ describe('렌더링', () => {
 describe('삭제 이펙트', () => {
   const round = (chain = 1) => ({
     chain, groups: 1, points: 100,
-    cells: Array.from({ length: 10 }, (_, c) => ({ r: 19, c, color: 2, head: c === 9 ? 2 : 0 })),
+    cells: Array.from({ length: 10 }, (_, c) => ({ r: ROWS - 1, c, color: 2, head: c === 9 ? 2 : 0 })),
   });
 
   it('칸마다 디졸브 조각과 줄 섬광, 흔들림/히트스톱이 생긴다', () => {

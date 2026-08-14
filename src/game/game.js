@@ -1,4 +1,4 @@
-import { DESIGN_MS, MAX_LEN, MIN_LEN, PALETTE, SCORE, SPEED } from '../config.js';
+import { DESIGN_MS, MAX_LEN, MIN_LEN, PALETTE, SCORE, SPAWN_ROW, SPEED } from '../config.js';
 import { Board } from './board.js';
 import { resolveClears } from './clear.js';
 import { dirCode } from './dirs.js';
@@ -38,7 +38,7 @@ export class Game {
 
   spawn() {
     const { len, color, dir } = this.next;
-    this.snake = Snake.spawn(len, color, dir, this.board.cols);
+    this.snake = Snake.spawn(len, color, dir, this.board.cols, SPAWN_ROW);
     this.next = this.#randomPiece();
     this.phase = PHASE.DESIGN;
     this.designLeft = DESIGN_MS;

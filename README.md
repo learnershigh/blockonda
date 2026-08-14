@@ -6,6 +6,7 @@
 
 ## 규칙
 
+- 필드는 가로 10칸 x 세로 21칸. 블록은 맨 위에서 한 칸 떨어진 줄에서 등장한다.
 - 블록은 길이 3~6칸의 뱀. **가로 일자**로 등장하며 머리는 바라보는 방향(좌/우 랜덤) 쪽 끝 칸이다.
 - 등장 후 **5초 동안 설계 타임**. 방향키로 머리를 조종하면 몸통이 머리가 지나온 경로를 따라온다.
   - 벽 / 쌓인 블록 / 뒤로 가기 → 아무 일도 일어나지 않는다.
@@ -60,4 +61,4 @@ tests/              단위 테스트 + 부팅 스모크 테스트
 
 - **GitHub Pages** — `main` 브랜치에 push하면 자동 반영.
 - **itch.io** — `npm run build`로 만든 zip을 업로드하고 "This file will be played in the browser" 체크.
-  Viewport 660 x 660 권장, 키보드 전용이므로 mobile friendly는 끈다.
+  Viewport 700 x 700 권장, 키보드 전용이므로 mobile friendly는 끈다.
