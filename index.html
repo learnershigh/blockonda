@@ -45,7 +45,7 @@
     <div class="panel keys">
       <span class="sec">[설계 5초]</span><br>
       <b>방향키</b>머리 조종<br>
-      <b>SPACE</b>즉시 드롭<br>
+      <b>SPACE</b>모양 확정<br>
       <span class="sec">[낙하 중]</span><br>
       <b>&larr; &rarr;</b>이동<br>
       <b>&darr;</b>소프트드롭<br>
@@ -383,7 +383,7 @@ document.addEventListener('keydown', e => {
       case 'ArrowRight': designMove(0, 1); break;
       case 'ArrowUp': designMove(-1, 0); break;
       case 'ArrowDown': designMove(1, 0); break;
-      case 'Space': startFall(); hardDrop(); break; // 조기 확정 + 즉시 드롭
+      case 'Space': startFall(); break; // 모양 확정 (낙하는 평소 속도로 시작)
     }
   } else {
     switch (e.code) {
