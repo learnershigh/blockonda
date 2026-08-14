@@ -243,3 +243,48 @@ describe('삭제 이펙트', () => {
     assert.ok(ctx.draws.every(d => d.alpha <= 1));
   });
 });
+
+describe('착지 이펙트', () => {
+  const hit = (distance, cells = [[ROWS - 1, 4], [ROWS - 1, 5]]) => ({ cells, distance, color: 1 });
+
+  it('먼지가 충격면에서 튀고 카메라가 아래로 눌린다', () => {
+    const fx = new Effects();
+    fx.impact(hit(12));
+    assert.ok(fx.dust.length >= 2, '칸마다 먼지가 생긴다');
+    assert.ok(fx.dust.every(d => d.y === ROWS * CELL), '먼지는 닿은 칸의 아랫면에서 시작');
+    assert.ok(fx.dust.every(d => d.vy < 0), '위로 튄다');
+    assert.ok(fx.busy, '먼지가 남아 있는 동안은 그려야 한다');
+
+    const [, dy] = fx.shakeOffset();
+    assert.ok(dy > 0, '카메라가 아래로 눌린다');
+  });
+
+  it('게임 시간은 멈추지 않고, 삭제보다 약하게 흔들린다', () => {
+    const fx = new Effects();
+    fx.impact(hit(21));
+    assert.ok(!fx.frozen, '하드드롭마다 멈추면 답답해진다');
+    assert.ok(fx.shake > 0 && fx.shake < 6, `흔들림이 과하다: ${fx.shake}`);
+  });
+
+  it('짧게 떨어지면 거의 티가 나지 않고, 붙어 있었다면 아무 일도 없다', () => {
+    const far = new Effects();
+    far.impact(hit(12));
+    const near = new Effects();
+    near.impact(hit(2));
+    assert.ok(near.dust.length < far.dust.length && near.kick < far.kick);
+
+    const none = new Effects();
+    none.impact(hit(0));
+    assert.equal(none.dust.length, 0);
+    assert.deepEqual(none.shakeOffset(), [0, 0]);
+  });
+
+  it('시간이 지나면 먼지도 카메라도 제자리로 돌아온다', () => {
+    const fx = new Effects();
+    fx.impact(hit(21));
+    for (let i = 0; i < 20; i++) fx.update(60);
+    assert.equal(fx.dust.length, 0);
+    assert.ok(!fx.busy);
+    assert.deepEqual(fx.shakeOffset(), [0, 0]);
+  });
+});

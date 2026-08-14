@@ -72,4 +72,13 @@ export class Snake {
   }
 
   collides(board) { return this.cells.some(([r, c]) => !board.free(r, c)); }
+
+  /** 열마다 가장 아래 칸 — 착지했을 때 바닥에 닿는 면 */
+  contactCells() {
+    const lowest = new Map();
+    for (const [r, c] of this.cells) {
+      if (!(lowest.get(c) >= r)) lowest.set(c, r);
+    }
+    return [...lowest].map(([c, r]) => [r, c]);
+  }
 }

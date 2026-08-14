@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { DESIGN_MS, MAX_LEN, MIN_LEN, ROWS, SPAWN_ROW } from '../src/config.js';
-import { ACTION, Game, PHASE } from '../src/game/game.js';
+import { ACTION, EVENT, Game, PHASE } from '../src/game/game.js';
 
 const FLOOR = ROWS - 1;
 
@@ -96,9 +96,10 @@ describe('Game', () => {
     assert.equal(game.score, (FLOOR - SPAWN_ROW) * 2);
   });
 
-  it('덩어리가 터지면 onClear로 알린다', () => {
+  it('덩어리가 터지면 clear 이벤트로 알린다', () => {
     const rounds = [];
-    const game = gameWith({ len: 4, color: 2, dir: 1 }, { onClear: r => rounds.push(...r) });
+    const game = gameWith({ len: 4, color: 2, dir: 1 },
+      { onEvent: (type, data) => { if (type === EVENT.CLEAR) rounds.push(...data.rounds); } });
 
     // 바닥 한 줄에서 6칸만 미리 채워두고, 남은 4칸을 이번 조각으로 메운다
     for (let c = 0; c < 6; c++) { game.board.color[FLOOR][c] = 2; game.board.pieceId[FLOOR][c] = 99; }
@@ -113,6 +114,56 @@ describe('Game', () => {
     assert.equal(rounds[0].cells.length, 10);
     assert.equal(game.lines, 1);
     assert.ok(game.board.isEmpty(), '터진 뒤 필드가 빈다');
+  });
+
+  it('착지하면 land 이벤트로 부딪힌 면과 하드드롭 거리를 알린다', () => {
+    const hits = [];
+    const game = gameWith({ len: 4, color: 3, dir: 1 },
+      { onEvent: (type, data) => { if (type === EVENT.LAND) hits.push(data); } });
+    game.confirm();
+    game.input(ACTION.DOWN); // 아직 바닥이 아니라 착지가 아니다
+    assert.equal(hits.length, 0);
+
+    game.input(ACTION.SPACE);
+    assert.equal(hits.length, 1);
+    const [hit] = hits;
+    assert.equal(hit.distance, FLOOR - SPAWN_ROW - 1, '소프트드롭으로 내려온 한 칸은 빠진다');
+    assert.equal(hit.cells.length, 4, '가로 일자는 네 칸 모두가 충격면');
+    assert.ok(hit.cells.every(([r]) => r === FLOOR), '충격면은 바닥에 닿은 줄');
+  });
+
+  it('저절로 닿아 굳어도 land 이벤트는 나오고, 거리는 0이다', () => {
+    const hits = [];
+    const game = gameWith({ len: 4, color: 1, dir: 1 },
+      { onEvent: (type, data) => { if (type === EVENT.LAND) hits.push(data); } });
+    game.confirm();
+    while (!game.placed) game.update(1000); // 중력에 맡겨 바닥까지
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].distance, 0, '하드드롭이 아니면 착지 충격도 없다');
+  });
+
+  it('생성 / 머리 이동 / 몸통박치기 / 게임오버를 이벤트로 알린다', () => {
+    const seen = [];
+    const game = gameWith({ len: 4, color: 1, dir: 1 }, { onEvent: type => seen.push(type) });
+    assert.ok(seen.every(type => type === EVENT.SPAWN), '등장할 때마다 spawn');
+    seen.length = 0;
+
+    game.input(ACTION.UP);
+    assert.deepEqual(seen, [EVENT.MOVE]);
+    game.input(ACTION.LEFT);   // 벽이 아니라 이동 성공
+    game.input(ACTION.DOWN);   // 머리가 방금 지나온 자리 = 자기 몸
+    assert.deepEqual(seen, [EVENT.MOVE, EVENT.MOVE, EVENT.SELF_HIT]);
+    assert.equal(game.phase, PHASE.FALL, '몸통박치기는 그 자리에서 굳는다');
+
+    seen.length = 0;
+    game.input(ACTION.SPACE);  // 착지 → 새 조각 등장
+    assert.deepEqual(seen, [EVENT.LAND, EVENT.SPAWN]);
+
+    seen.length = 0;
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < 10; c++) game.board.color[r][c] = 1;
+    game.spawn();              // 등장 자리가 막혔다
+    assert.deepEqual(seen, [EVENT.OVER]);
+    assert.ok(game.over);
   });
 
   it('블록을 쌓을수록 낙하가 빨라진다', () => {

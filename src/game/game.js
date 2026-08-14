@@ -14,15 +14,33 @@ export const ACTION = {
 };
 
 /**
+ * 게임에서 일어난 일. 연출(effects)과 효과음(sound)이 이걸 보고 반응한다.
+ * 값은 config.js의 SOUND.events 키와 그대로 맞물린다.
+ */
+export const EVENT = {
+  SPAWN: 'spawn',        // 새 조각 등장
+  MOVE: 'move',          // 설계 중 머리 이동 / 낙하 중 좌우 이동
+  SELF_HIT: 'self-hit',  // 자기 몸에 부딪혀 그 자리에서 굳음
+  LAND: 'land',          // 바닥이나 블록에 닿아 고정 { cells, distance }
+  CLEAR: 'clear',        // 덩어리 삭제 { rounds }
+  OVER: 'over',          // 게임 오버
+};
+
+/**
  * 게임 규칙 전체. 렌더링과 DOM을 전혀 모르며, 시간은 update(dt)로만 흐른다.
- * onClear 콜백으로 "무엇이 터졌는지"만 바깥에 알려주고 연출은 바깥에 맡긴다.
+ * 바깥에는 onEvent(type, data)로 "무엇이 일어났는지"만 알리고,
+ * 그게 어떻게 보이고 들릴지는 전부 바깥이 정한다.
  */
 export class Game {
-  constructor({ rng = Math.random, onClear = null } = {}) {
+  constructor({ rng = Math.random, onEvent = null } = {}) {
     this.rng = rng;
-    this.onClear = onClear;
+    this.onEvent = onEvent;
     this.board = new Board();
     this.reset();
+  }
+
+  #emit(type, data) {
+    if (this.onEvent) this.onEvent(type, data);
   }
 
   reset() {
@@ -44,6 +62,7 @@ export class Game {
     this.designLeft = DESIGN_MS;
     this.acc = 0;
     if (this.snake.collides(this.board)) this.over = true; // 등장 자리가 이미 막힘
+    this.#emit(this.over ? EVENT.OVER : EVENT.SPAWN);
   }
 
   /** 설계를 끝내고 낙하 시작 */
@@ -87,8 +106,12 @@ export class Game {
       [ACTION.UP]: [0, -1], [ACTION.DOWN]: [0, 1],
     }[action];
     if (turn) {
+      const result = this.snake.turn(turn[0], turn[1], this.board);
       // 자기 몸에 부딪히면 페널티로 그 모양 그대로 굳는다
-      if (this.snake.turn(turn[0], turn[1], this.board) === TURN.SELF_HIT) this.confirm();
+      if (result === TURN.SELF_HIT) {
+        this.#emit(EVENT.SELF_HIT);
+        this.confirm();
+      } else if (result === TURN.MOVED) this.#emit(EVENT.MOVE);
       return;
     }
     if (action === ACTION.SPACE) this.confirm();
@@ -99,7 +122,10 @@ export class Game {
       case ACTION.LEFT:
       case ACTION.RIGHT: {
         const dc = action === ACTION.LEFT ? -1 : 1;
-        if (this.snake.canShift(this.board, 0, dc)) this.snake.shift(0, dc);
+        if (this.snake.canShift(this.board, 0, dc)) {
+          this.snake.shift(0, dc);
+          this.#emit(EVENT.MOVE);
+        }
         break;
       }
       case ACTION.DOWN: this.#softDrop(); break;
@@ -116,11 +142,13 @@ export class Game {
   }
 
   #hardDrop() {
+    let distance = 0;
     while (this.snake.canShift(this.board, 1, 0)) {
       this.snake.shift(1, 0);
       this.score += SCORE.hard;
+      distance++;
     }
-    this.#lock();
+    this.#lock(distance);
   }
 
   #gravityStep() {
@@ -128,7 +156,11 @@ export class Game {
     else this.#lock();
   }
 
-  #lock() {
+  /** distance = 하드드롭으로 떨어진 칸 수. 저절로 닿았으면 0이라 착지가 부드럽다. */
+  #lock(distance = 0) {
+    // 굳기 전에 알려야 부딪힌 면이 아직 뱀의 것으로 남아 있다
+    this.#emit(EVENT.LAND, { cells: this.snake.contactCells(), distance });
+
     const [dx, dy] = this.snake.facing;
     this.board.lock(this.snake.cells, this.snake.color, dirCode(dx, dy));
     this.placed++;
@@ -138,7 +170,7 @@ export class Game {
       this.score += round.points;
       this.lines += round.groups;
     }
-    if (rounds.length && this.onClear) this.onClear(rounds);
+    if (rounds.length) this.#emit(EVENT.CLEAR, { rounds });
 
     if (!this.over) this.spawn();
   }

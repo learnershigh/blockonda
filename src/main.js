@@ -1,6 +1,6 @@
 import { loadSprites } from './assets.js';
 import { BOX_FRAME, CELL, COLS, PREVIEW, ROWS } from './config.js';
-import { Game } from './game/game.js';
+import { EVENT, Game } from './game/game.js';
 import { bindKeys } from './input.js';
 import { startLoop } from './loop.js';
 import { applyBoxFrame } from './render/box-frame.js';
@@ -8,6 +8,7 @@ import { createContext } from './render/canvas.js';
 import { Effects } from './render/effects.js';
 import { Hud } from './render/hud.js';
 import { drawBoard, drawPreview } from './render/renderer.js';
+import { Sound } from './sound.js';
 
 const TITLE = 'TETRIS';
 const INTRO = '블록이 나오면 <b>5초</b> 동안 방향키로 머리를 움직여 모양 설계!<br>'
@@ -25,12 +26,22 @@ const hud = new Hud({
   overlay: document.getElementById('overlay'),
 });
 
-const effects = new Effects();
-const game = new Game({ onClear: rounds => effects.spawn(rounds) });
-
 // 세션 상태 — 게임 규칙이 아니라 화면 흐름에 대한 것
+// (Game 생성 중에도 첫 스폰 이벤트가 올라오므로 콜백보다 먼저 선언해야 한다)
 let started = false;
 let paused = false;
+
+const effects = new Effects();
+const sound = new Sound();
+
+// 게임이 알려주는 사건 하나가 연출과 소리로 갈라진다
+const game = new Game({
+  onEvent: (type, data) => {
+    if (type === EVENT.CLEAR) effects.spawn(data.rounds);
+    else if (type === EVENT.LAND) effects.impact(data);
+    if (started) sound.play(type); // 시작 전 첫 스폰까지 울리지는 않게
+  },
+});
 
 function startGame() {
   started = true;
@@ -61,6 +72,7 @@ function endGame() {
 hud.showOverlay(TITLE, INTRO);
 
 bindKeys(document, ({ action, code, repeat }) => {
+  if (code === 'KeyM') return sound.setMuted(!sound.muted); // 언제든 소리 끄고 켜기
   if (game.over) {
     if (code === 'Enter') restart();
     return;
@@ -86,6 +98,7 @@ let wasOver = false;
 startLoop(dt => {
   effects.update(dt);
   const running = started && !paused && !game.over;
+  sound.setMusic(running); // 일시정지/게임오버에는 멈췄다가 이어서 다시
   if (running && !effects.frozen) game.update(dt);
 
   if (game.over && !wasOver) endGame();
