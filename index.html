@@ -53,7 +53,7 @@
     <canvas id="board"></canvas>
     <div id="overlay">
       <div class="big">TETRIS</div>
-      <div class="small">가로 한 줄을 빈틈없이 <b>같은 색</b>으로 채우면 삭제!<br>클릭 또는 아무 키나 눌러 시작</div>
+      <div class="small"><b>같은 색 덩어리</b>가 좌우 벽에 모두 닿으면 삭제!<br>구불구불해도 이어져 있으면 OK<br>클릭 또는 아무 키나 눌러 시작</div>
     </div>
   </div>
 
@@ -207,19 +207,58 @@ function lock() {
   });
   if (topOut) { gameOver(); return; }
   placed++;
-  clearLines();
+  clearConnected();
   canHold = true;
   spawn();
 }
-function clearLines() {
-  // 벽에서 벽까지 빈틈없이 같은 색으로 채워진 줄만 삭제
-  const remain = field.filter(row => !(row[0] && row.every(v => v === row[0])));
-  const n = ROWS - remain.length;
-  if (!n) return;
-  while (remain.length < ROWS) remain.unshift(Array(COLS).fill(0));
-  field = remain;
-  lines += n;
-  score += [0, 100, 300, 500, 800][n];
+// 같은 색 4방향 연결 덩어리 중 왼쪽 벽(0열)과 오른쪽 벽(9열)에 모두 닿은 것들을 찾는다
+function findSpanningComponents() {
+  const seen = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+  const comps = [];
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++) {
+      if (!field[r][c] || seen[r][c]) continue;
+      const color = field[r][c];
+      const stack = [[r, c]], cells = [];
+      let minC = c, maxC = c;
+      seen[r][c] = true;
+      while (stack.length) {
+        const [cr, cc] = stack.pop();
+        cells.push([cr, cc]);
+        if (cc < minC) minC = cc;
+        if (cc > maxC) maxC = cc;
+        for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nr = cr + dr, nc = cc + dc;
+          if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+          if (seen[nr][nc] || field[nr][nc] !== color) continue;
+          seen[nr][nc] = true;
+          stack.push([nr, nc]);
+        }
+      }
+      if (minC === 0 && maxC === COLS - 1) comps.push(cells);
+    }
+  return comps;
+}
+function applyGravity() { // 삭제로 뜬 블록은 열마다 아래로 떨어진다
+  for (let c = 0; c < COLS; c++) {
+    let write = ROWS - 1;
+    for (let r = ROWS - 1; r >= 0; r--)
+      if (field[r][c]) field[write--][c] = field[r][c];
+    while (write >= 0) field[write--][c] = 0;
+  }
+}
+function clearConnected() {
+  let chain = 0;
+  while (true) {
+    const comps = findSpanningComponents();
+    if (!comps.length) break;
+    chain++; // 낙하로 새 연결이 생기면 연쇄 — 배율 x2, x3...
+    let cells = 0;
+    comps.forEach(comp => comp.forEach(([r, c]) => { field[r][c] = 0; cells++; }));
+    lines += comps.length;
+    score += cells * 10 * chain;
+    applyGravity();
+  }
 }
 function ghostY() {
   let y = cur.y;
