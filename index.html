@@ -125,9 +125,9 @@ function makeNext() {
 // cur = { color, cells: [[r,c], ...] } — cells[0]이 머리, 필드 절대좌표
 function spawn() {
   const L = nextP.len, color = nextP.color;
-  const startC = Math.floor((COLS - L) / 2);
+  const col = Math.floor((COLS - 1) / 2);
   const cells = [];
-  for (let i = 0; i < L; i++) cells.push([0, startC + L - 1 - i]); // 가로 일자, 머리 = 오른쪽 끝
+  for (let i = 0; i < L; i++) cells.push([L - 1 - i, col]); // 세로 일자, 머리 = 맨 아래 칸(아래를 봄)
   cur = { color, cells };
   nextP = makeNext();
   drawPreview(nctx, nextP);
@@ -327,10 +327,10 @@ function headDot(ctx, px, py, size) { // 설계 중 조종하는 머리 표시
 function drawPreview(ctx, p) {
   ctx.clearRect(0, 0, PW, PH);
   if (!p) return;
-  const s = 12; // 최대 8칸도 들어가게 작은 셀
-  const ox = (PW - p.len * s) / 2, oy = (PH - s) / 2;
-  for (let i = 0; i < p.len; i++) drawCell(ctx, ox + i * s, oy, s, PALETTE[p.color - 1]);
-  headDot(ctx, ox + (p.len - 1) * s, oy, s);
+  const s = 10; // 최대 8칸 세로도 들어가게 작은 셀
+  const ox = (PW - s) / 2, oy = (PH - p.len * s) / 2;
+  for (let i = 0; i < p.len; i++) drawCell(ctx, ox, oy + i * s, s, PALETTE[p.color - 1]);
+  headDot(ctx, ox, oy + (p.len - 1) * s, s); // 머리 = 맨 아래
 }
 function draw() {
   const W = COLS * CS, H = ROWS * CS;
