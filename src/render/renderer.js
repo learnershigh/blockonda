@@ -1,6 +1,6 @@
 import { CELL, COLS, PREVIEW, ROWS } from '../config.js';
-import { dirVec } from '../game/dirs.js';
-import { drawSnakeCell } from './sprites.js';
+import { dirVec, LINK } from '../game/dirs.js';
+import { drawSegment } from './sprites.js';
 
 const BOARD_BG = '#0d1320';
 const GRID_LINE = 'rgba(255,255,255,0.045)';
@@ -31,8 +31,9 @@ export function drawPreview(ctx, piece) {
   const oy = (PREVIEW.h - cell) / 2;
   const headIndex = piece.dir > 0 ? piece.len - 1 : 0; // 머리 = 바라보는 방향 쪽 끝
   for (let i = 0; i < piece.len; i++) {
-    const facing = i === headIndex ? [piece.dir, 0] : null;
-    drawSnakeCell(ctx, ox + i * cell, oy, cell, piece.color, facing);
+    const head = i === headIndex ? [piece.dir, 0] : null;
+    const links = (i > 0 ? LINK.LEFT : 0) | (i < piece.len - 1 ? LINK.RIGHT : 0);
+    drawSegment(ctx, ox + i * cell, oy, cell, piece.color, { head, links });
   }
 }
 
@@ -45,13 +46,14 @@ function drawGrid(ctx, w, h) {
   ctx.stroke();
 }
 
-/** 쌓인 블록. 각 조각의 머리 칸은 쌓인 뒤에도 머리 스프라이트로 남는다. */
+/** 쌓인 블록. 머리와 꺾인 자리(코너)는 쌓인 뒤에도 그대로 남는다. */
 function drawStack(ctx, board) {
   for (let r = 0; r < board.rows; r++) {
     for (let c = 0; c < board.cols; c++) {
       const color = board.color[r][c];
       if (!color) continue;
-      drawSnakeCell(ctx, c * CELL, r * CELL, CELL, color, dirVec(board.head[r][c]));
+      const segment = { head: dirVec(board.head[r][c]), links: board.linksAt(r, c) };
+      drawSegment(ctx, c * CELL, r * CELL, CELL, color, segment);
     }
   }
 }
@@ -60,8 +62,10 @@ function drawSnake(ctx, game) {
   const { snake, board } = game;
   const facing = snake.facing;
   const distance = snake.dropDistance(board);
-  const paint = (offset, ghost) => snake.cells.forEach(([r, c], i) =>
-    drawSnakeCell(ctx, c * CELL, (r + offset) * CELL, CELL, snake.color, i === 0 ? facing : null, ghost));
+  const paint = (offset, ghost) => snake.cells.forEach(([r, c], i) => {
+    const segment = { head: i === 0 ? facing : null, links: snake.linksAt(i) };
+    drawSegment(ctx, c * CELL, (r + offset) * CELL, CELL, snake.color, segment, ghost);
+  });
 
   if (distance > 0) paint(distance, true); // 섀도우에도 머리 방향이 보인다
   paint(0, false);

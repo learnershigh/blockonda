@@ -13,7 +13,12 @@ export function resolveClears(board) {
 
     const flat = comps.flat();
     // 이펙트가 쓸 수 있도록 지워지기 전의 색/머리 정보를 남겨둔다
-    const cells = flat.map(([r, c]) => ({ r, c, color: board.color[r][c], head: board.head[r][c] }));
+    const cells = flat.map(([r, c]) => ({
+      r, c,
+      color: board.color[r][c],
+      head: board.head[r][c],
+      link: board.linksAt(r, c),
+    }));
     board.remove(flat);
     board.applyGravity();
 

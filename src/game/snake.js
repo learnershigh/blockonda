@@ -1,3 +1,5 @@
+import { linksInPath } from './dirs.js';
+
 /** 설계 타임에 머리를 움직였을 때의 결과 */
 export const TURN = {
   MOVED: 'moved',
@@ -35,6 +37,9 @@ export class Snake {
   }
 
   occupies(r, c) { return this.cells.some(([cr, cc]) => cr === r && cc === c); }
+
+  /** index 칸이 앞뒤 칸으로 이어지는 방향 비트 (코너 스프라이트 판단용) */
+  linksAt(index) { return linksInPath(this.cells, index); }
 
   /** 설계 타임: 머리를 한 칸 옮기고 몸통이 따라온다 (길이는 그대로) */
   turn(dx, dy, board) {

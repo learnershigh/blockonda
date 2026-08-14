@@ -18,11 +18,14 @@ export function createStubContext() {
       m[2] = -a * si + c * co; m[3] = -b * si + d * co;
     },
     drawImage(img) {
+      const [a, b, c, d] = m;
       target.draws.push({
         src: img.src,
         alpha: target.globalAlpha,
         x: m[4], y: m[5],              // 로컬 (0,0) = 칸 중심
-        nose: [round(-m[0]), round(-m[1])], // 원본이 왼쪽(-x)을 보므로 실제 바라보는 방향
+        nose: [round(-a), round(-b)],  // 원본이 왼쪽(-x)을 보므로 실제 바라보는 방향
+        // 원본 기준 방향이 화면에서 어디를 향하게 되는지
+        mapDir: ([vx, vy]) => [round(a * vx + c * vy), round(b * vx + d * vy)],
       });
     },
   };

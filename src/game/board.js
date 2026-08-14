@@ -1,4 +1,5 @@
-import { COLS, ROWS } from '../config.js';
+import { COLS, DIRS, ROWS } from '../config.js';
+import { linksInPath } from './dirs.js';
 
 const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const grid = (rows, cols) => Array.from({ length: rows }, () => Array(cols).fill(0));
@@ -9,6 +10,7 @@ const grid = (rows, cols) => Array.from({ length: rows }, () => Array(cols).fill
  *  - color   : 색 번호(1~3), 0이면 빈 칸
  *  - pieceId : 어느 조각에서 왔는지 → 삭제 후 그 모양 그대로 떨어뜨리는 근거
  *  - head    : 머리 칸이면 바라보던 방향 코드(1~4), 몸통이면 0
+ *  - link    : 몸이 어느 쪽으로 이어지는지(비트) → 직선/코너 스프라이트 선택에 쓰인다
  */
 export class Board {
   constructor(cols = COLS, rows = ROWS) {
@@ -21,6 +23,7 @@ export class Board {
     this.color = grid(this.rows, this.cols);
     this.pieceId = grid(this.rows, this.cols);
     this.head = grid(this.rows, this.cols);
+    this.link = grid(this.rows, this.cols);
     this.nextId = 1;
   }
 
@@ -32,11 +35,12 @@ export class Board {
   /** 조각을 필드에 고정한다. cells[0]이 머리. */
   lock(cells, color, headCode) {
     const id = this.nextId++;
-    for (const [r, c] of cells) {
+    cells.forEach(([r, c], i) => {
       this.color[r][c] = color;
       this.pieceId[r][c] = id;
       this.head[r][c] = 0;
-    }
+      this.link[r][c] = linksInPath(cells, i); // 지나온 경로를 기억해 코너를 그린다
+    });
     const [hr, hc] = cells[0];
     this.head[hr][hc] = headCode;
     return id;
@@ -47,7 +51,21 @@ export class Board {
       this.color[r][c] = 0;
       this.pieceId[r][c] = 0;
       this.head[r][c] = 0;
+      this.link[r][c] = 0;
     }
+  }
+
+  /** 실제로 남아 있는 이웃만 남긴 연결 비트 (삭제로 잘린 곳은 끊어진다) */
+  linksAt(r, c) {
+    const id = this.pieceId[r][c];
+    let mask = 0;
+    DIRS.forEach(([dx, dy], i) => {
+      const bit = 1 << i;
+      if (!(this.link[r][c] & bit)) return;
+      const nr = r + dy, nc = c + dx;
+      if (this.filled(nr, nc) && this.pieceId[nr][nc] === id) mask |= bit;
+    });
+    return mask;
   }
 
   /** 같은 색으로 이어지고, 왼쪽 벽과 오른쪽 벽에 모두 닿은 덩어리들 */
@@ -112,11 +130,12 @@ export class Board {
   }
 
   #dropChunk(chunk) {
-    const saved = chunk.cells.map(([r, c]) => [this.color[r][c], this.pieceId[r][c], this.head[r][c]]);
+    const saved = chunk.cells.map(([r, c]) =>
+      [this.color[r][c], this.pieceId[r][c], this.head[r][c], this.link[r][c]]);
     this.remove(chunk.cells);
     chunk.cells = chunk.cells.map(([r, c]) => [r + 1, c]);
     chunk.cells.forEach(([r, c], i) => {
-      [this.color[r][c], this.pieceId[r][c], this.head[r][c]] = saved[i];
+      [this.color[r][c], this.pieceId[r][c], this.head[r][c], this.link[r][c]] = saved[i];
     });
     chunk.set = new Set(chunk.cells.map(([r, c]) => r + ',' + c));
   }

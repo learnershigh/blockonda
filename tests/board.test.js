@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { Board } from '../src/game/board.js';
+import { LINK } from '../src/game/dirs.js';
 
 /** 테스트용으로 칸을 직접 채운다 */
 function put(board, r, c, color, id, head = 0) {
@@ -18,6 +19,37 @@ describe('Board', () => {
     assert.equal(board.pieceId[19][3], id);
     assert.equal(board.head[19][5], 2, '머리 칸');
     assert.equal(board.head[19][4], 0, '몸통 칸');
+  });
+
+  describe('linksAt (코너 스프라이트 판단용 연결 정보)', () => {
+    it('꺾인 자리는 두 방향으로 이어진 것으로 기록된다', () => {
+      const board = new Board();
+      // 머리(19,5) ← (19,4) ← (18,4): (19,4)에서 위로 꺾인다
+      board.lock([[19, 5], [19, 4], [18, 4]], 1, 2);
+      assert.equal(board.linksAt(19, 5), LINK.LEFT, '머리는 목 쪽으로만');
+      assert.equal(board.linksAt(19, 4), LINK.RIGHT | LINK.UP, '코너');
+      assert.equal(board.linksAt(18, 4), LINK.DOWN, '꼬리');
+    });
+
+    it('직선 몸통은 좌우로 이어진다', () => {
+      const board = new Board();
+      board.lock([[19, 5], [19, 4], [19, 3]], 1, 2);
+      assert.equal(board.linksAt(19, 4), LINK.LEFT | LINK.RIGHT);
+    });
+
+    it('붙어 있어도 다른 조각과는 이어지지 않는다', () => {
+      const board = new Board();
+      board.lock([[19, 5], [19, 4]], 1, 2);
+      board.lock([[19, 3], [19, 2]], 1, 2);
+      assert.equal(board.linksAt(19, 4) & LINK.LEFT, 0);
+    });
+
+    it('삭제로 이웃이 사라지면 연결도 끊어진다', () => {
+      const board = new Board();
+      board.lock([[19, 5], [19, 4], [19, 3]], 1, 2);
+      board.remove([[19, 3]]);
+      assert.equal(board.linksAt(19, 4), LINK.RIGHT);
+    });
   });
 
   describe('findSpanning', () => {
