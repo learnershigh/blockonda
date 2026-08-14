@@ -142,7 +142,9 @@ function designMove(dr, dc) {
   const nr = hr + dr, nc = hc + dc;
   if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) return; // 벽: 무시
   if (field[nr][nc]) return;                                // 쌓인 블록: 무시
-  if (cur.cells.some(([r, c]) => r === nr && c === nc)) {   // 자기 몸 겹침: 페널티 → 즉시 낙하
+  const neck = cur.cells[1];                                // 뒤로 가기(바로 뒤 몸통): 아무 일도 없음
+  if (neck && nr === neck[0] && nc === neck[1]) return;
+  if (cur.cells.some(([r, c]) => r === nr && c === nc)) {   // 그 외 자기 몸 겹침: 페널티 → 즉시 낙하
     startFall();
     return;
   }
