@@ -1,10 +1,31 @@
+/* ---- 갈무리11 (SIL OFL 1.1, assets/fonts/OFL.md) ----
+   11px 기준으로 그려진 픽셀 폰트라 11의 배수 크기에서 가장 또렷하다.
+   내려받기 실패하면 아래 monospace 스택으로 그대로 떨어진다. */
+@font-face {
+  font-family: Galmuri11;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Galmuri11 Regular'),
+       url('../assets/fonts/Galmuri11.woff2') format('woff2');
+}
+@font-face {
+  font-family: Galmuri11;
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Galmuri11 Bold'),
+       url('../assets/fonts/Galmuri11-Bold.woff2') format('woff2');
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { height: 100%; }
 
 body {
   background: #0b0e14;
   color: #e6edf3;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+  font-family: Galmuri11, ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+  -webkit-font-smoothing: none;   /* 안티에일리어싱을 끄면 픽셀이 뭉개지지 않는다 */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -29,15 +50,15 @@ body {
   padding: 12px;
 }
 .panel h2 {
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 3px;
   color: #8b949e;
   margin-bottom: 8px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
-#score { font-size: 26px; color: #58a6ff; font-weight: 700; text-align: right; }
-#time { font-size: 26px; color: #4cd964; font-weight: 700; text-align: right; }
+#score { font-size: 22px; color: #58a6ff; font-weight: 700; text-align: right; }
+#time { font-size: 22px; color: #4cd964; font-weight: 700; text-align: right; }
 
 canvas.preview { display: block; margin: 0 auto; }
 
@@ -63,11 +84,11 @@ canvas.preview { display: block; margin: 0 auto; }
   cursor: pointer;
 }
 #overlay.hidden { display: none; }
-#overlay .big { font-size: 28px; letter-spacing: 6px; font-weight: 700; color: #58a6ff; }
-#overlay .small { font-size: 13px; color: #9aa4b2; line-height: 1.9; }
+#overlay .big { font-size: 22px; letter-spacing: 6px; font-weight: 700; color: #58a6ff; }
+#overlay .small { font-size: 11px; color: #9aa4b2; line-height: 1.9; }
 
 .keys { font-size: 11px; color: #8b949e; line-height: 2; }
-.keys b { color: #c9d1d9; display: inline-block; min-width: 50px; font-weight: 600; }
+.keys b { color: #c9d1d9; display: inline-block; min-width: 50px; font-weight: 700; }
 .keys .sec { color: #4cd964; letter-spacing: 1px; }
 
 /* ---- 9-slice 박스 프레임 (assets/Box00.png) ----
