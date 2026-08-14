@@ -53,7 +53,7 @@
     <canvas id="board"></canvas>
     <div id="overlay">
       <div class="big">TETRIS</div>
-      <div class="small">클릭 또는 아무 키나 눌러 시작</div>
+      <div class="small">가로 한 줄을 빈틈없이 <b>같은 색</b>으로 채우면 삭제!<br>클릭 또는 아무 키나 눌러 시작</div>
     </div>
   </div>
 
@@ -84,7 +84,8 @@ const SHAPES = {
   J: [[1,0,0],[1,1,1],[0,0,0]],
   L: [[0,0,1],[1,1,1],[0,0,0]],
 };
-const COLORS = { I:'#37d6e8', O:'#f5c542', T:'#b061e0', S:'#4cd964', Z:'#ff5a5f', J:'#5b8cff', L:'#ff9f43' };
+// 블록 색 팔레트 — 필드 셀에는 1부터 시작하는 인덱스로 저장(0 = 빈 칸)
+const PALETTE = ['#ff5a5f', '#5b8cff', '#f5c542'];
 
 function initCanvas(id, w, h) {
   const cv = document.getElementById(id);
@@ -101,7 +102,7 @@ const hctx = initCanvas('hold', PW, PH);
 const overlay = document.getElementById('overlay');
 const scoreEl = document.getElementById('score');
 
-let field, cur, nextT, heldType, bag, score, lines;
+let field, cur, nextP, held, shapeBag, colorBag, score, lines, placed;
 let over, started, paused, canHold, acc;
 let shownScore = -1;
 
@@ -111,17 +112,25 @@ function eachCell(matrix, fn) {
     for (let c = 0; c < matrix[r].length; c++)
       if (matrix[r][c]) fn(r, c);
 }
-function refillBag() { // 7-bag 랜덤
-  bag = Object.keys(SHAPES);
-  for (let i = bag.length - 1; i > 0; i--) {
+function shuffled(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [bag[i], bag[j]] = [bag[j], bag[i]];
+    [a[i], a[j]] = [a[j], a[i]];
   }
+  return a;
 }
-function take() { if (!bag.length) refillBag(); return bag.pop(); }
-function makePiece(type) {
+function takeShape() { // 7-bag 랜덤
+  if (!shapeBag.length) shapeBag = shuffled(Object.keys(SHAPES));
+  return shapeBag.pop();
+}
+function takeColor() { // 색도 bag 방식으로 고르게 배분
+  if (!colorBag.length) colorBag = shuffled(PALETTE.map((_, i) => i + 1));
+  return colorBag.pop();
+}
+function makePiece(type, color) {
   const matrix = SHAPES[type].map(r => r.slice());
-  return { type, matrix, x: Math.floor((COLS - matrix[0].length) / 2), y: 0 };
+  return { type, color, matrix, x: Math.floor((COLS - matrix[0].length) / 2), y: 0 };
 }
 function collides(matrix, x, y) {
   for (let r = 0; r < matrix.length; r++)
@@ -143,9 +152,9 @@ function active() { return started && !over && !paused && cur; }
 
 // ---------- 게임 로직 ----------
 function spawn() {
-  cur = makePiece(nextT);
-  nextT = take();
-  drawPreview(nctx, nextT);
+  cur = makePiece(nextP.type, nextP.color);
+  nextP = { type: takeShape(), color: takeColor() };
+  drawPreview(nctx, nextP);
   acc = 0;
   if (collides(cur.matrix, cur.x, cur.y)) gameOver();
 }
@@ -179,30 +188,32 @@ function hardDrop() {
 function holdPiece() {
   if (!active() || !canHold) return;
   canHold = false;
-  const t = cur.type;
-  if (heldType === null) { heldType = t; spawn(); }
+  const t = { type: cur.type, color: cur.color };
+  if (held === null) { held = t; spawn(); }
   else {
-    cur = makePiece(heldType);
-    heldType = t;
+    cur = makePiece(held.type, held.color);
+    held = t;
     acc = 0;
     if (collides(cur.matrix, cur.x, cur.y)) gameOver();
   }
-  drawPreview(hctx, heldType);
+  drawPreview(hctx, held);
 }
 function lock() {
   let topOut = false;
   eachCell(cur.matrix, (r, c) => {
     const by = cur.y + r, bx = cur.x + c;
     if (by < 0) { topOut = true; return; }
-    field[by][bx] = cur.type;
+    field[by][bx] = cur.color;
   });
   if (topOut) { gameOver(); return; }
+  placed++;
   clearLines();
   canHold = true;
   spawn();
 }
 function clearLines() {
-  const remain = field.filter(row => row.some(v => !v));
+  // 벽에서 벽까지 빈틈없이 같은 색으로 채워진 줄만 삭제
+  const remain = field.filter(row => !(row[0] && row.every(v => v === row[0])));
   const n = ROWS - remain.length;
   if (!n) return;
   while (remain.length < ROWS) remain.unshift(Array(COLS).fill(0));
@@ -215,7 +226,9 @@ function ghostY() {
   while (!collides(cur.matrix, cur.x, y + 1)) y++;
   return y;
 }
-function dropInterval() { return Math.max(90, 750 - Math.floor(lines / 10) * 60); }
+function dropInterval() { // 색 맞추기 규칙에선 줄 삭제가 드물어 놓은 블록 수 기준으로 가속
+  return Math.max(90, 750 - Math.floor(placed / 25) * 60);
+}
 
 function gameOver() {
   over = true;
@@ -223,12 +236,12 @@ function gameOver() {
 }
 function resetGame() {
   field = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
-  score = 0; lines = 0;
+  score = 0; lines = 0; placed = 0;
   over = false; paused = false;
-  heldType = null; canHold = true;
-  acc = 0; bag = [];
+  held = null; canHold = true;
+  acc = 0; shapeBag = []; colorBag = [];
   drawPreview(hctx, null);
-  nextT = take();
+  nextP = { type: takeShape(), color: takeColor() };
   spawn();
 }
 function start() { started = true; paused = false; acc = 0; overlay.classList.add('hidden'); }
@@ -261,10 +274,10 @@ function drawCell(ctx, px, py, size, color, ghost) {
   ctx.fillRect(px + p, py + p + s - b, s, b);
   ctx.fillRect(px + p + s - b, py + p, b, s);
 }
-function drawPreview(ctx, type) {
+function drawPreview(ctx, piece) {
   ctx.clearRect(0, 0, PW, PH);
-  if (!type) return;
-  const m = SHAPES[type];
+  if (!piece) return;
+  const m = SHAPES[piece.type];
   let minR = 9, maxR = -1, minC = 9, maxC = -1;
   eachCell(m, (r, c) => {
     minR = Math.min(minR, r); maxR = Math.max(maxR, r);
@@ -272,7 +285,7 @@ function drawPreview(ctx, type) {
   });
   const ox = (PW - (maxC - minC + 1) * PCS) / 2;
   const oy = (PH - (maxR - minR + 1) * PCS) / 2;
-  eachCell(m, (r, c) => drawCell(ctx, ox + (c - minC) * PCS, oy + (r - minR) * PCS, PCS, COLORS[type]));
+  eachCell(m, (r, c) => drawCell(ctx, ox + (c - minC) * PCS, oy + (r - minR) * PCS, PCS, PALETTE[piece.color - 1]));
 }
 function draw() {
   const W = COLS * CS, H = ROWS * CS;
@@ -287,15 +300,16 @@ function draw() {
 
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
-      if (field[r][c]) drawCell(bctx, c * CS, r * CS, CS, COLORS[field[r][c]]);
+      if (field[r][c]) drawCell(bctx, c * CS, r * CS, CS, PALETTE[field[r][c] - 1]);
 
   if (cur && !over) {
+    const color = PALETTE[cur.color - 1];
     const gy = ghostY();
     if (gy > cur.y) eachCell(cur.matrix, (r, c) => {
-      drawCell(bctx, (cur.x + c) * CS, (gy + r) * CS, CS, COLORS[cur.type], true);
+      drawCell(bctx, (cur.x + c) * CS, (gy + r) * CS, CS, color, true);
     });
     eachCell(cur.matrix, (r, c) => {
-      if (cur.y + r >= 0) drawCell(bctx, (cur.x + c) * CS, (cur.y + r) * CS, CS, COLORS[cur.type]);
+      if (cur.y + r >= 0) drawCell(bctx, (cur.x + c) * CS, (cur.y + r) * CS, CS, color);
     });
   }
 
