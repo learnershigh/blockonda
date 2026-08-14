@@ -173,74 +173,27 @@ describe('Game', () => {
     assert.ok(game.over);
   });
 
-  describe('콤보', () => {
-    /** 바닥 왼쪽 6칸을 미리 채워두고, 이번 조각으로 오른쪽 4칸을 메워 한 줄을 터뜨린다 */
-    function clearOnce(game, color) {
-      game.next = { len: 4, color, dir: 1 };
-      game.spawn();
-      for (let c = 0; c < 6; c++) { game.board.color[FLOOR][c] = color; game.board.pieceId[FLOOR][c] = 99; }
-      game.confirm();
-      while (game.snake.cells.some(([, c]) => c < 6)) game.input(ACTION.RIGHT);
-      game.input(ACTION.SPACE);
-      for (let i = 0; i < 100 && game.phase === PHASE.CLEAR; i++) game.update(20);
+  it('한 조각이 부른 연쇄는 라운드마다 chain을 올려서 알린다', () => {
+    const rounds = [];
+    const game = gameWith({ len: 4, color: 3, dir: 1 },
+      { onEvent: (type, data) => { if (type === EVENT.CLEAR) rounds.push(data); } });
+
+    // 바닥 한 줄(빨강)이 터지면 그 위 조각들이 내려앉으며 두 번째 줄(초록)이 완성된다
+    for (let c = 0; c < 10; c++) { game.board.color[FLOOR][c] = 1; game.board.pieceId[FLOOR][c] = 99; }
+    for (let c = 0; c < 10; c++) {
+      if (c === 5) continue;
+      game.board.color[FLOOR - 1][c] = 2;
+      game.board.pieceId[FLOOR - 1][c] = 98;
     }
+    game.board.color[FLOOR - 2][5] = 2; // 빈 자리로 내려앉아 줄을 잇는 한 칸
+    game.board.pieceId[FLOOR - 2][5] = 97;
 
-    it('조각이 바뀌어도 계속 터뜨리는 동안은 콤보가 이어진다', () => {
-      const combos = [];
-      const game = new Game({ onEvent: (type, data) => { if (type === EVENT.CLEAR) combos.push(data.combo); } });
+    game.confirm();
+    game.input(ACTION.SPACE); // 얹히기만 해도 판정은 시작된다
+    for (let i = 0; i < 200 && game.phase === PHASE.CLEAR; i++) game.update(20);
 
-      clearOnce(game, 2);
-      assert.equal(game.combo, 1);
-      clearOnce(game, 2);
-      assert.equal(game.combo, 2, '다음 조각으로 또 터뜨리면 이어진다');
-      clearOnce(game, 3);
-      assert.deepEqual(combos, [1, 2, 3], 'clear 이벤트가 지금 콤보를 함께 알린다');
-    });
-
-    it('아무것도 못 터뜨린 조각이 굳으면 콤보가 끊긴다', () => {
-      const game = new Game();
-      clearOnce(game, 2);
-      assert.equal(game.combo, 1);
-
-      game.next = { len: 4, color: 1, dir: 1 };
-      game.spawn();
-      game.confirm();
-      game.input(ACTION.SPACE); // 빈 바닥에 그냥 쌓이기만 한다
-      assert.equal(game.combo, 0);
-      assert.equal(game.phase, PHASE.DESIGN, '터진 게 없으니 곧장 다음 조각');
-    });
-
-    it('한 조각 안의 연쇄도 라운드마다 콤보를 올린다', () => {
-      const rounds = [];
-      const game = gameWith({ len: 4, color: 3, dir: 1 },
-        { onEvent: (type, data) => { if (type === EVENT.CLEAR) rounds.push(data); } });
-
-      // 바닥 한 줄(빨강)이 터지면 그 위 조각들이 내려앉으며 두 번째 줄(초록)이 완성된다
-      for (let c = 0; c < 10; c++) { game.board.color[FLOOR][c] = 1; game.board.pieceId[FLOOR][c] = 99; }
-      for (let c = 0; c < 10; c++) {
-        if (c === 5) continue;
-        game.board.color[FLOOR - 1][c] = 2;
-        game.board.pieceId[FLOOR - 1][c] = 98;
-      }
-      game.board.color[FLOOR - 2][5] = 2; // 빈 자리로 내려앉아 줄을 잇는 한 칸
-      game.board.pieceId[FLOOR - 2][5] = 97;
-
-      game.confirm();
-      game.input(ACTION.SPACE); // 얹히기만 해도 판정은 시작된다
-      for (let i = 0; i < 200 && game.phase === PHASE.CLEAR; i++) game.update(20);
-
-      assert.deepEqual(rounds.map(r => r.chain), [1, 2], '두 번에 걸쳐 터진다');
-      assert.deepEqual(rounds.map(r => r.combo), [1, 2], '연쇄 라운드마다 콤보도 오른다');
-      assert.equal(game.combo, 2);
-    });
-
-    it('reset하면 콤보도 처음으로 돌아간다', () => {
-      const game = new Game();
-      clearOnce(game, 2);
-      assert.equal(game.combo, 1);
-      game.reset();
-      assert.equal(game.combo, 0);
-    });
+    assert.deepEqual(rounds.map(r => r.chain), [1, 2], '두 번에 걸쳐 터진다');
+    assert.equal(game.phase, PHASE.DESIGN, '연쇄가 다 끝나야 다음 조각');
   });
 
   describe('점수에 따른 난이도', () => {

@@ -49,7 +49,7 @@ export class Effects {
   }
 
   /** clear 이벤트가 넘겨준 연쇄 한 라운드로 연출을 만든다 */
-  spawn({ cells, chain, combo = 0 }) {
+  spawn({ cells, chain }) {
     const rows = new Set();
     for (const { r, c, color, head, tail, link } of cells) {
       const seed = [], jitter = [];
@@ -64,9 +64,10 @@ export class Effects {
     this.shake = Math.min(FX.shakeMax, this.shake + 6 + cells.length * 0.25 + (chain - 1) * 4);
     this.hitstop = Math.max(this.hitstop, 90 + (chain - 1) * 40);
 
-    // 한 번에 하나만 띄운다. 연쇄가 빠르게 이어질 때 숫자가 겹치면 오히려 못 읽는다 —
-    // 뒤엣것이 앞엣것을 밀어내며 새로 튀어오르는 편이 "지금 몇 콤보인지" 더 잘 보인다.
-    if (combo >= COMBO.min) this.combo = { n: combo, born: this.time };
+    // 콤보는 연쇄에서만 터진다. 조각마다 한 줄씩 지운 건 이어 붙여도 콤보가 아니다 —
+    // 한 번 굳힌 게 스스로 다음 삭제를 부른 것, 그게 콤보다.
+    // 한 번에 하나만 띄운다. 연쇄가 빠르게 이어질 때 숫자가 겹치면 오히려 못 읽는다.
+    if (chain >= COMBO.min) this.combo = { n: chain, born: this.time };
   }
 
   /**

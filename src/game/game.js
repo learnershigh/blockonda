@@ -23,7 +23,7 @@ export const EVENT = {
   MOVE: 'move',          // 설계 중 머리 이동 / 낙하 중 좌우 이동
   SELF_HIT: 'self-hit',  // 자기 몸에 부딪혀 그 자리에서 굳음
   LAND: 'land',          // 바닥이나 블록에 닿아 고정 { cells, distance }
-  CLEAR: 'clear',        // 덩어리 삭제 — 연쇄 한 라운드마다 한 번 { chain, combo, groups, cells, points }
+  CLEAR: 'clear',        // 덩어리 삭제 — 연쇄 한 라운드마다 한 번 { chain, groups, cells, points }
   OVER: 'over',          // 게임 오버
 };
 
@@ -48,7 +48,6 @@ export class Game {
     this.board.clear();
     this.score = 0;
     this.lines = 0;      // 터뜨린 덩어리 수
-    this.combo = 0;      // 연속으로 터뜨린 횟수 — 못 터뜨린 조각이 굳으면 0으로 끊긴다
     this.placed = 0;     // 쌓은 블록 수 (표시/통계용 — 난이도는 점수를 따른다)
     this.over = false;
     this.colorBag = [];
@@ -187,21 +186,16 @@ export class Game {
     // 터질 게 있으면 연쇄를 한 단계씩 진행하고(그동안 다음 조각은 기다린다), 없으면 곧장 다음 조각
     this.cascade = new Cascade(this.board);
     if (this.#popRound()) this.phase = PHASE.CLEAR;
-    else {
-      this.combo = 0; // 아무것도 못 터뜨린 채 굳었다 — 여기서 연속이 끊긴다
-      this.spawn();
-    }
+    else this.spawn();
   }
 
-  /** 연쇄 한 라운드를 터뜨리고 점수/콤보에 반영한다. 터질 게 없으면 false */
+  /** 연쇄 한 라운드를 터뜨리고 점수에 반영한다. 터질 게 없으면 false */
   #popRound() {
     const round = this.cascade.pop();
     if (!round) return false;
     this.score += round.points;
     this.lines += round.groups;
-    // 콤보는 연쇄(chain)와 달리 조각이 바뀌어도 이어진다 — 끊는 건 못 터뜨린 착지뿐이다
-    this.combo++;
-    this.#emit(EVENT.CLEAR, { ...round, combo: this.combo });
+    this.#emit(EVENT.CLEAR, round);
     return true;
   }
 

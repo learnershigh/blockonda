@@ -245,21 +245,21 @@ describe('삭제 이펙트', () => {
 });
 
 describe('콤보 표시', () => {
-  const round = combo => ({
-    chain: 1, groups: 1, points: 100, combo,
+  const round = chain => ({
+    chain, groups: 1, points: 100,
     cells: [{ r: ROWS - 1, c: 0, color: 2, head: 0 }],
   });
-  /** 팝업 하나를 그려서 기록을 돌려준다 */
-  const paint = combo => {
+  /** 연쇄 한 라운드를 그려서 기록을 돌려준다 */
+  const paint = chain => {
     const ctx = createStubContext();
     const fx = new Effects();
-    fx.spawn(round(combo));
+    fx.spawn(round(chain));
     fx.draw(ctx);
     return { fx, ctx, text: ctx.texts[0] };
   };
   const fontSize = text => +/(\d+)px/.exec(text.font)[1];
 
-  it(`${COMBO.min}콤보부터 "nCombo!"가 뜬다`, () => {
+  it(`${COMBO.min}연쇄부터 "nCombo!"가 뜬다`, () => {
     const { text } = paint(COMBO.min);
     assert.ok(text, '팝업이 그려진다');
     assert.equal(text.text, `${COMBO.min}Combo!`);
@@ -268,8 +268,23 @@ describe('콤보 표시', () => {
     assert.ok(text.scale > 1, '나타나는 순간 크게 튄다');
   });
 
-  it('한 번 터진 걸로는 뜨지 않는다', () => {
-    const { fx, ctx } = paint(COMBO.min - 1);
+  it('연쇄 없이 한 번 터진 걸로는 뜨지 않는다', () => {
+    const { fx, ctx } = paint(1);
+    assert.equal(fx.combo, null, '조각마다 한 줄씩 지운 건 이어져도 콤보가 아니다');
+    assert.deepEqual(ctx.texts, []);
+  });
+
+  it('조각이 바뀌면 연쇄가 처음부터 다시 세어져 콤보도 끊긴다', () => {
+    const ctx = createStubContext();
+    const fx = new Effects();
+    // 한 조각이 2연쇄를 냈다가, 다음 조각은 연쇄 없이 한 번만 터뜨린 상황
+    fx.spawn(round(1));
+    fx.spawn(round(2));
+    assert.equal(fx.combo.n, 2);
+
+    fx.update(COMBO.showMs);
+    fx.spawn(round(1)); // 다음 조각의 첫 삭제 — Cascade가 새로 만들어져 chain은 1부터
+    fx.draw(ctx);
     assert.equal(fx.combo, null);
     assert.deepEqual(ctx.texts, []);
   });
