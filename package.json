@@ -1,0 +1,12 @@
+{
+  "name": "snake-tetris",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "뱀처럼 모양을 설계해 쌓는 테트리스 (웹)",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "test": "node --test tests/",
+    "build": "sh scripts/build-itch.sh"
+  }
+}
