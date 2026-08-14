@@ -89,21 +89,30 @@ export class Board {
     );
   }
 
-  /** 삭제로 떠버린 블록을 조각 단위(강체)로 낙하시킨다 — 빈칸을 메우지 않는다 */
+  /** 삭제로 떠버린 블록을 조각 단위(강체)로 끝까지 낙하시킨다 — 빈칸을 메우지 않는다 */
   applyGravity() {
+    while (this.gravityStep());
+  }
+
+  /**
+   * 떠 있는 덩어리를 딱 한 칸씩만 내린다. 하나라도 움직였으면 true.
+   * 연쇄 연출이 이걸 시간 간격을 두고 부르기 때문에 낙하가 눈에 보인다.
+   */
+  gravityStep() {
     const chunks = this.#components((r, c) => this.pieceId[r][c]).map(cells => ({
       cells,
       set: new Set(cells.map(([r, c]) => r + ',' + c)),
+      bottom: Math.max(...cells.map(([r]) => r)),
     }));
-    let moved = true;
-    while (moved) {
-      moved = false;
-      for (const chunk of chunks) {
-        if (!this.#chunkCanFall(chunk)) continue;
-        this.#dropChunk(chunk);
-        moved = true;
-      }
+    // 아래쪽 덩어리부터 내린다 — 위에 얹힌 덩어리가 한 박자 늦지 않고 같이 따라 내려온다
+    chunks.sort((a, b) => b.bottom - a.bottom);
+    let moved = false;
+    for (const chunk of chunks) {
+      if (!this.#chunkCanFall(chunk)) continue;
+      this.#dropChunk(chunk);
+      moved = true;
     }
+    return moved;
   }
 
   /** key(r,c)가 같고 4방향으로 이어진 칸 묶음들. accept로 걸러낸다. */

@@ -96,10 +96,10 @@ describe('Game', () => {
     assert.equal(game.score, (FLOOR - SPAWN_ROW) * 2);
   });
 
-  it('덩어리가 터지면 clear 이벤트로 알린다', () => {
+  it('덩어리가 터지면 clear 이벤트로 알리고, 연쇄가 끝날 때까지 다음 조각을 기다린다', () => {
     const rounds = [];
     const game = gameWith({ len: 4, color: 2, dir: 1 },
-      { onEvent: (type, data) => { if (type === EVENT.CLEAR) rounds.push(...data.rounds); } });
+      { onEvent: (type, data) => { if (type === EVENT.CLEAR) rounds.push(data); } });
 
     // 바닥 한 줄에서 6칸만 미리 채워두고, 남은 4칸을 이번 조각으로 메운다
     for (let c = 0; c < 6; c++) { game.board.color[FLOOR][c] = 2; game.board.pieceId[FLOOR][c] = 99; }
@@ -114,6 +114,13 @@ describe('Game', () => {
     assert.equal(rounds[0].cells.length, 10);
     assert.equal(game.lines, 1);
     assert.ok(game.board.isEmpty(), '터진 뒤 필드가 빈다');
+
+    assert.equal(game.phase, PHASE.CLEAR, '연출이 끝날 때까지는 조작할 조각이 없다');
+    game.input(ACTION.SPACE); // 이 동안의 입력은 무시된다
+    assert.equal(game.phase, PHASE.CLEAR);
+
+    for (let i = 0; i < 100 && game.phase === PHASE.CLEAR; i++) game.update(20);
+    assert.equal(game.phase, PHASE.DESIGN, '연쇄가 끝나면 다음 조각이 등장한다');
   });
 
   it('착지하면 land 이벤트로 부딪힌 면과 하드드롭 거리를 알린다', () => {

@@ -1,6 +1,6 @@
 import { loadSprites } from './assets.js';
 import { BOX_FRAME, CELL, COLS, PREVIEW, ROWS } from './config.js';
-import { EVENT, Game } from './game/game.js';
+import { EVENT, Game, PHASE } from './game/game.js';
 import { bindKeys } from './input.js';
 import { startLoop } from './loop.js';
 import { applyBoxFrame } from './render/box-frame.js';
@@ -10,7 +10,7 @@ import { Hud } from './render/hud.js';
 import { drawBoard, drawPreview } from './render/renderer.js';
 import { Sound } from './sound.js';
 
-const TITLE = 'TETRIS';
+const TITLE = 'BLOCKONDA';
 const INTRO = '블록이 나오면 <b>5초</b> 동안 방향키로 머리를 움직여 모양 설계!<br>'
   + '같은 색 덩어리가 좌우 벽에 모두 닿으면 삭제!<br>클릭 또는 아무 키나 눌러 시작';
 
@@ -37,8 +37,11 @@ const sound = new Sound();
 // 게임이 알려주는 사건 하나가 연출과 소리로 갈라진다
 const game = new Game({
   onEvent: (type, data) => {
-    if (type === EVENT.CLEAR) effects.spawn(data.rounds);
-    else if (type === EVENT.LAND) effects.impact(data);
+    if (type === EVENT.CLEAR) effects.spawn(data);
+    else if (type === EVENT.LAND) {
+      effects.impact(data);
+      effects.endPenalty(); // 붉은 뱀이 굳는 순간 — 그 색은 다음 조각의 것이 아니다
+    } else if (type === EVENT.SELF_HIT) effects.penalty();
     if (started) sound.play(type); // 시작 전 첫 스폰까지 울리지는 않게
   },
 });
@@ -95,11 +98,18 @@ window.addEventListener('blur', () => {
 });
 
 let wasOver = false;
+let wasDesign = game.phase === PHASE.DESIGN;
 startLoop(dt => {
   effects.update(dt);
   const running = started && !paused && !game.over;
   sound.setMusic(running); // 일시정지/게임오버에는 멈췄다가 이어서 다시
   if (running && !effects.frozen) game.update(dt);
+
+  // 설계 → 낙하로 넘어간 순간이 곧 "모양 확정"이다. SPACE로 끝내든 5초가 다 되든 여기로 모인다.
+  // 자기 몸을 밟아 굳은 거라면 붉은 기운이 이미 올라와 있으니 흰 빛으로 덮지 않는다.
+  const designing = game.phase === PHASE.DESIGN;
+  if (wasDesign && !designing && !effects.penaltyFlash) effects.confirm(game.snake.cells);
+  wasDesign = designing;
 
   if (game.over && !wasOver) endGame();
   wasOver = game.over;

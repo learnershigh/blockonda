@@ -6,7 +6,7 @@ import { createStubContext, stubImages } from './helpers/canvas-stub.js';
 stubImages(); // assets.js가 Image를 쓰기 전에 준비
 
 const { loadSprites } = await import('../src/assets.js');
-const { CELL, ROWS } = await import('../src/config.js');
+const { CELL, CONFIRM, FX, PENALTY, ROWS } = await import('../src/config.js');
 const { Game, ACTION } = await import('../src/game/game.js');
 const { Effects } = await import('../src/render/effects.js');
 const { drawBoard, drawPreview } = await import('../src/render/renderer.js');
@@ -206,7 +206,7 @@ describe('삭제 이펙트', () => {
 
   it('칸마다 디졸브 조각과 줄 섬광, 흔들림/히트스톱이 생긴다', () => {
     const fx = new Effects();
-    fx.spawn([round()]);
+    fx.spawn(round());
     assert.equal(fx.cells.length, 10);
     assert.equal(fx.rows.length, 1);
     assert.ok(fx.shake > 0 && fx.hitstop > 0);
@@ -217,16 +217,16 @@ describe('삭제 이펙트', () => {
 
   it('연쇄일수록 더 세게 때린다', () => {
     const single = new Effects();
-    single.spawn([round(1)]);
+    single.spawn(round(1));
     const chained = new Effects();
-    chained.spawn([round(3)]);
+    chained.spawn(round(3));
     assert.ok(chained.shake > single.shake);
     assert.ok(chained.hitstop > single.hitstop);
   });
 
   it('시간이 지나면 정리되고 흔들림도 잦아든다', () => {
     const fx = new Effects();
-    fx.spawn([round()]);
+    fx.spawn(round());
     for (let i = 0; i < 20; i++) fx.update(60);
     assert.equal(fx.cells.length, 0);
     assert.equal(fx.rows.length, 0);
@@ -237,7 +237,7 @@ describe('삭제 이펙트', () => {
   it('디졸브 조각이 실제로 그려진다', () => {
     const ctx = createStubContext();
     const fx = new Effects();
-    fx.spawn([round()]);
+    fx.spawn(round());
     fx.draw(ctx);
     assert.ok(ctx.draws.length > 10, '칸당 여러 조각');
     assert.ok(ctx.draws.every(d => d.alpha <= 1));
@@ -286,5 +286,172 @@ describe('착지 이펙트', () => {
     assert.equal(fx.dust.length, 0);
     assert.ok(!fx.busy);
     assert.deepEqual(fx.shakeOffset(), [0, 0]);
+  });
+});
+
+describe('페널티 이펙트', () => {
+  before(() => loadSprites()); // 스프라이트 파일명으로 색을 확인하므로 이미지가 필요하다
+
+  // 파란 뱀 — 페널티로 색이 바뀌는 게 보이도록
+  const blueGame = () => {
+    const game = new Game();
+    game.next = { len: 4, color: 3, dir: 1 };
+    game.spawn();
+    return game;
+  };
+
+  it('자기 몸을 밟으면 화면이 흔들리고 붉은 기운이 켜진다', () => {
+    const fx = new Effects();
+    assert.equal(fx.penaltyFlash, 0);
+    fx.penalty();
+    assert.equal(fx.penaltyFlash, 1);
+
+    const [sx, sy] = fx.shakeOffset();
+    assert.ok(sx !== 0 || sy !== 0, '화면이 흔들린다');
+    assert.ok(fx.shake < FX.shakeMax, `흔들림이 과하다: ${fx.shake}`);
+    assert.ok(!fx.frozen, '페널티로 이미 낙하가 시작되므로 게임 시간은 멈추지 않는다');
+  });
+
+  it('시간이 지나면 붉은 기운도 흔들림도 걷힌다', () => {
+    const fx = new Effects();
+    fx.penalty();
+    for (let i = 0; i < 10; i++) fx.update(60);
+    assert.equal(fx.penaltyFlash, 0);
+    assert.deepEqual(fx.shakeOffset(), [0, 0]);
+  });
+
+  it('페널티 동안 뱀이 제 색 대신 빨간 스프라이트로 그려진다', () => {
+    const ctx = createStubContext();
+    const fx = new Effects();
+    fx.penalty();
+    drawBoard(ctx, blueGame(), fx);
+    assert.ok(ctx.draws.length > 0);
+    assert.ok(ctx.draws.every(d => /0\.png$/.test(d.src)), `빨간 스프라이트: ${ctx.draws[0].src}`);
+    assert.equal(ctx.globalAlpha, 1, '알파는 되돌려 놓는다');
+    assert.equal(ctx.globalCompositeOperation, 'source-over', '합성 모드도 되돌려 놓는다');
+  });
+
+  it('달아오른 겹이 원래 그림 위에 덧그려진다', () => {
+    const ctx = createStubContext();
+    const fx = new Effects();
+    fx.penalty();
+    const game = blueGame();
+    drawBoard(ctx, game, fx);
+
+    const solid = ctx.draws.filter(d => d.alpha === 1);
+    const glow = ctx.draws.filter(d => d.alpha > 0 && d.alpha < 1 && d.y === solid[0].y);
+    assert.equal(solid.length, game.snake.length, '뱀 한 벌');
+    assert.equal(glow.length, game.snake.length, '같은 자리에 덧그리는 한 벌 더');
+  });
+
+  it('페널티가 끝나면 제 색으로 돌아온다', () => {
+    const ctx = createStubContext();
+    const fx = new Effects();
+    fx.penalty();
+    fx.update(PENALTY.flashMs);
+    drawBoard(ctx, blueGame(), fx);
+    assert.ok(ctx.draws.every(d => /2\.png$/.test(d.src)), `파란 스프라이트: ${ctx.draws[0].src}`);
+  });
+
+  it('붉은 조각이 굳으면 거기서 끝난다 (다음 조각이 물들지 않게)', () => {
+    const fx = new Effects();
+    fx.penalty();
+    fx.endPenalty();
+    assert.equal(fx.penaltyFlash, 0);
+  });
+});
+
+describe('확정 이펙트', () => {
+  before(() => loadSprites());
+
+  // 튀는 방향까지 확인하므로 난수를 고정한다 (Math.random이면 가끔 한쪽으로 몰린다)
+  const seeded = (seed = 1) => () => (seed = seed * 16807 % 2147483647) / 2147483647;
+
+  const game = () => {
+    const g = new Game();
+    g.next = { len: 4, color: 3, dir: 1 };
+    g.spawn();
+    return g;
+  };
+
+  it('모양이 굳으면 하얗게 뜨고 칸마다 반짝이가 튄다', () => {
+    const fx = new Effects({ rng: seeded() });
+    const cells = [[5, 4], [5, 5], [5, 6]];
+    fx.confirm(cells);
+
+    assert.equal(fx.confirmGlow, 1);
+    assert.equal(fx.sparks.length, cells.length * CONFIRM.sparks);
+    assert.ok(fx.busy, '반짝이가 남아 있는 동안은 그려야 한다');
+    assert.ok(fx.sparks.every(s => Math.hypot(s.vx, s.vy) > 0), '멈춰 있는 조각은 없다');
+    assert.ok(fx.sparks.some(s => s.vy < 0) && fx.sparks.some(s => s.vy > 0), '사방으로 흩어진다');
+    assert.ok(fx.sparks.every(s => s.x >= 4 * CELL && s.x <= 7 * CELL), '제 칸에서 시작한다');
+  });
+
+  it('뱀만 부르르 떨고, 화면은 흔들리지도 멈추지도 않는다', () => {
+    const fx = new Effects({ rng: seeded() });
+    fx.confirm([[5, 4]]);
+    assert.ok(!fx.frozen);
+    assert.deepEqual(fx.shakeOffset(), [0, 0], '필드와 쌓인 블록은 가만히 있는다');
+
+    const [dx, dy] = fx.snakeOffset();
+    assert.ok(dx !== 0 || dy !== 0, '뱀은 떤다');
+    assert.ok(Math.abs(dx) <= CONFIRM.shake && Math.abs(dy) <= CONFIRM.shake,
+      `떨림이 과하다: ${dx}, ${dy}`);
+  });
+
+  it('떨림은 금세 잦아든다', () => {
+    const fx = new Effects({ rng: seeded() });
+    fx.confirm([[5, 4]]);
+    fx.update(CONFIRM.shakeMs / 2);
+    const half = Math.max(...fx.snakeOffset().map(Math.abs));
+    assert.ok(half <= CONFIRM.shake / 2, `절반쯤 지나면 폭도 절반: ${half}`);
+
+    fx.update(CONFIRM.shakeMs);
+    assert.deepEqual(fx.snakeOffset(), [0, 0]);
+  });
+
+  it('섀도우는 떨지 않는다 — 착지 자리를 가리키는 표지판이니까', () => {
+    const g = game();
+    const fx = new Effects({ rng: seeded() });
+    fx.confirm(g.snake.cells);
+
+    const ctx = createStubContext();
+    drawBoard(ctx, g, fx);
+    const homes = g.snake.cells.map(([, c]) => c * CELL + CELL / 2);
+    const ghosts = ctx.draws.filter(d => d.alpha < 1);
+    assert.equal(ghosts.length, g.snake.length);
+    assert.ok(ghosts.every(d => homes.includes(d.x)), '섀도우는 제 칸에 그대로 있다');
+  });
+
+  it('반짝이는 반 칸쯤 튀고 사라진다', () => {
+    const fx = new Effects({ rng: seeded() });
+    fx.confirm([[5, 4]]);
+    const start = fx.sparks.map(s => [s.x, s.y]);
+
+    for (let i = 0; i < 4; i++) fx.update(60);
+    const moved = fx.sparks.map((s, i) => Math.hypot(s.x - start[i][0], s.y - start[i][1]));
+    assert.ok(moved.every(d => d > 0 && d < CELL), `튀는 거리가 과하다: ${Math.max(...moved)}`);
+
+    for (let i = 0; i < 4; i++) fx.update(60);
+    assert.equal(fx.sparks.length, 0);
+    assert.equal(fx.confirmGlow, 0);
+    assert.ok(!fx.busy);
+  });
+
+  it('그동안 뱀이 하얀 한 겹으로 덧그려지고, 끝나면 원래대로다', () => {
+    const g = game();
+    const fx = new Effects();
+    fx.confirm(g.snake.cells);
+
+    const lit = createStubContext();
+    drawBoard(lit, g, fx);
+    assert.equal(lit.draws.filter(d => d.alpha === 1).length, g.snake.length * 2, '제 색 + 하얀 겹');
+    assert.equal(lit.filter, 'none', '필터는 되돌려 놓는다');
+    assert.equal(lit.globalAlpha, 1);
+
+    fx.update(CONFIRM.flashMs);
+    const done = createStubContext();
+    drawBoard(done, g, fx);
+    assert.equal(done.draws.filter(d => d.alpha === 1).length, g.snake.length, '한 벌만 남는다');
   });
 });

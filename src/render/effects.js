@@ -1,6 +1,7 @@
-import { CELL, COLS, DROP, FX, PALETTE } from '../config.js';
+import { CELL, COLS, CONFIRM, DROP, FX, PALETTE, PENALTY } from '../config.js';
 import { isReady } from '../assets.js';
 import { dirVec } from '../game/dirs.js';
+import { seamBleed } from './canvas.js';
 import { pickSprite } from './sprites.js';
 
 /**
@@ -8,8 +9,11 @@ import { pickSprite } from './sprites.js';
  *  - 디졸브 : 칸을 조각으로 쪼개 흩날리며 사라짐
  *  - 타격감 : 백색 섬광 + 화면 흔들림 + 짧은 정지(hitstop)
  *  - 착지   : 카메라가 아래로 쿡 눌렸다 돌아오고, 부딪힌 면에서 먼지가 튄다
+ *  - 페널티 : 자기 몸을 밟으면 화면이 흔들리고 뱀이 붉게 달아오른다
+ *  - 확정   : 모양이 굳는 순간 뱀이 하얗게 번쩍이고 반짝이가 튄다
  */
 const DUST_COLOR = '#cfd8ea';
+const SPARK_COLOR = '#ffffff';
 export class Effects {
   constructor({ rng = Math.random } = {}) {
     this.rng = rng;
@@ -20,34 +24,43 @@ export class Effects {
     this.cells = [];   // 디졸브 중인 칸
     this.rows = [];    // 삭제된 줄을 훑는 섬광
     this.dust = [];    // 착지 먼지
+    this.sparks = [];  // 확정 순간 튀는 반짝임
     this.time = 0;
     this.shake = 0;
     this.hitstop = 0;
-    this.kick = 0;     // 카메라가 아래로 눌린 정도(px)
-    this.kickLeft = 0; // 남은 복귀 시간(ms)
+    this.kick = 0;      // 카메라가 아래로 눌린 정도(px)
+    this.kickLeft = 0;  // 남은 복귀 시간(ms)
+    this.flashLeft = 0; // 페널티 붉은 섬광이 남은 시간(ms)
+    this.glowLeft = 0;  // 확정 백색 섬광이 남은 시간(ms)
+    this.quiverLeft = 0; // 확정 순간 뱀이 떠는 시간(ms)
   }
 
   /** hitstop 동안에는 게임 시간이 멈춘다 */
   get frozen() { return this.hitstop > 0; }
-  get busy() { return this.cells.length > 0 || this.rows.length > 0 || this.dust.length > 0; }
+  /** 페널티로 뱀이 달아오른 정도 1 → 0. 뱀은 렌더러가 그리므로 세기만 넘겨준다. */
+  get penaltyFlash() { return this.flashLeft / PENALTY.flashMs; }
+  /** 확정으로 뱀이 하얗게 뜬 정도 1 → 0. 마찬가지로 세기만 넘겨준다. */
+  get confirmGlow() { return this.glowLeft / CONFIRM.flashMs; }
+  get busy() {
+    return this.cells.length > 0 || this.rows.length > 0
+      || this.dust.length > 0 || this.sparks.length > 0;
+  }
 
-  /** Game의 onClear가 넘겨준 라운드들로 연출을 만든다 */
-  spawn(rounds) {
-    for (const { cells, chain } of rounds) {
-      const rows = new Set();
-      for (const { r, c, color, head, tail, link } of cells) {
-        const seed = [], jitter = [];
-        for (let i = 0; i < FX.split * FX.split; i++) {
-          seed.push(0.2 + this.rng() * 0.8);   // 조각마다 사라지는 시점
-          jitter.push(this.rng());             // 조각마다 튀는 방향
-        }
-        this.cells.push({ r, c, color, head, tail, link, born: this.time, seed, jitter });
-        rows.add(r);
+  /** clear 이벤트가 넘겨준 연쇄 한 라운드로 연출을 만든다 */
+  spawn({ cells, chain }) {
+    const rows = new Set();
+    for (const { r, c, color, head, tail, link } of cells) {
+      const seed = [], jitter = [];
+      for (let i = 0; i < FX.split * FX.split; i++) {
+        seed.push(0.2 + this.rng() * 0.8);   // 조각마다 사라지는 시점
+        jitter.push(this.rng());             // 조각마다 튀는 방향
       }
-      for (const r of rows) this.rows.push({ r, born: this.time });
-      this.shake = Math.min(FX.shakeMax, this.shake + 6 + cells.length * 0.25 + (chain - 1) * 4);
-      this.hitstop = Math.max(this.hitstop, 90 + (chain - 1) * 40);
+      this.cells.push({ r, c, color, head, tail, link, born: this.time, seed, jitter });
+      rows.add(r);
     }
+    for (const r of rows) this.rows.push({ r, born: this.time });
+    this.shake = Math.min(FX.shakeMax, this.shake + 6 + cells.length * 0.25 + (chain - 1) * 4);
+    this.hitstop = Math.max(this.hitstop, 90 + (chain - 1) * 40);
   }
 
   /**
@@ -77,11 +90,50 @@ export class Effects {
     }
   }
 
+  /**
+   * 자기 몸에 부딪혔을 때의 페널티 연출.
+   * 점수를 깎는 대신 화면을 흔들고 뱀을 붉게 달궈 "지금 실수했다"를 손으로 느끼게 한다.
+   * 게임 시간은 멈추지 않는다 — 페널티로 이미 낙하가 시작되기 때문.
+   */
+  penalty() {
+    this.shake = Math.min(FX.shakeMax, this.shake + PENALTY.shake);
+    this.flashLeft = PENALTY.flashMs;
+  }
+
+  /** 달아오른 조각이 굳으면 붉은 기운도 거기서 끝난다 — 다음 조각까지 물들지 않게 */
+  endPenalty() { this.flashLeft = 0; }
+
+  /**
+   * 설계가 끝나 모양이 확정된 순간. 뱀이 하얗게 번쩍이며 몸을 떨고 반짝이가 튄다.
+   * 화면은 흔들지 않고 게임 시간도 멈추지 않는다 —
+   * 잘못한 게 아니라 "이 모양으로 굳었다"는 신호라서 조각 하나에서만 일어난다.
+   */
+  confirm(cells) {
+    this.glowLeft = CONFIRM.flashMs;
+    this.quiverLeft = CONFIRM.shakeMs;
+    for (const [r, c] of cells) {
+      for (let i = 0; i < CONFIRM.sparks; i++) {
+        const angle = this.rng() * Math.PI * 2;   // 사방으로 흩어진다
+        const speed = CONFIRM.sparkSpeed * (0.4 + this.rng() * 0.8);
+        this.sparks.push({
+          x: c * CELL + CELL * (0.2 + this.rng() * 0.6),
+          y: r * CELL + CELL * (0.2 + this.rng() * 0.6),
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          born: this.time,
+        });
+      }
+    }
+  }
+
   update(dt) {
     this.time += dt;
     if (this.hitstop > 0) this.hitstop -= dt;
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * FX.shakeDecay);
     if (this.kickLeft > 0) this.kickLeft = Math.max(0, this.kickLeft - dt);
+    if (this.flashLeft > 0) this.flashLeft = Math.max(0, this.flashLeft - dt);
+    if (this.glowLeft > 0) this.glowLeft = Math.max(0, this.glowLeft - dt);
+    if (this.quiverLeft > 0) this.quiverLeft = Math.max(0, this.quiverLeft - dt);
     if (this.cells.length) this.cells = this.cells.filter(f => this.time - f.born < FX.dissolveMs);
     if (this.rows.length) this.rows = this.rows.filter(f => this.time - f.born < FX.rowFlashMs);
     if (this.dust.length) {
@@ -92,6 +144,25 @@ export class Effects {
       }
       this.dust = this.dust.filter(d => this.time - d.born < DROP.dustMs);
     }
+    if (this.sparks.length) {
+      for (const s of this.sparks) {
+        s.x += s.vx * dt;
+        s.vy += CONFIRM.gravity * dt;
+        s.y += s.vy * dt;
+      }
+      this.sparks = this.sparks.filter(s => this.time - s.born < CONFIRM.sparkMs);
+    }
+  }
+
+  /**
+   * 확정 순간 뱀이 떠는 offset. 화면 흔들림과 달리 조작 중인 조각 하나에만 걸리므로
+   * 필드와 쌓인 블록은 가만히 있고 뱀만 부르르 떤다.
+   */
+  snakeOffset() {
+    const t = this.quiverLeft / CONFIRM.shakeMs;
+    if (t <= 0) return [0, 0];
+    const amp = CONFIRM.shake * t;
+    return [(this.rng() * 2 - 1) * amp, (this.rng() * 2 - 1) * amp];
   }
 
   /** 화면 흔들림 offset — 렌더러가 필드를 그리기 전에 적용한다 */
@@ -106,7 +177,18 @@ export class Effects {
     this.#drawRowFlash(ctx);
     this.#drawDissolve(ctx);
     this.#drawDust(ctx);
+    this.#drawSparks(ctx);
     ctx.globalAlpha = 1;
+  }
+
+  #drawSparks(ctx) {
+    ctx.fillStyle = SPARK_COLOR;
+    for (const s of this.sparks) {
+      const p = (this.time - s.born) / CONFIRM.sparkMs;
+      if (p >= 1) continue;
+      ctx.globalAlpha = 1 - p * p;   // 끝에서 훅 꺼진다
+      ctx.fillRect(Math.round(s.x), Math.round(s.y), CONFIRM.sparkSize, CONFIRM.sparkSize);
+    }
   }
 
   #drawDust(ctx) {
@@ -138,6 +220,7 @@ export class Effects {
       const { img } = pickSprite(f.color, { head: dirVec(f.head), tail: dirVec(f.tail), links: f.link });
       const ok = isReady(img);
       const tile = CELL / n;
+      const drawn = tile + seamBleed();  // 흩어지기 직전까지는 한 덩어리로 보여야 한다
       const src = (ok ? img.naturalWidth : 16) / n;
       const x = f.c * CELL, y = f.r * CELL;
 
@@ -148,8 +231,8 @@ export class Effects {
         const jx = (f.jitter[i] * 2 - 1) * p * 15;        // 좌우로 튀고
         const jy = -p * p * 24 - p * 5;                   // 살짝 떠오른다
         ctx.globalAlpha = Math.max(0, 1 - p * 0.85);
-        if (ok) ctx.drawImage(img, tx * src, ty * src, src, src, x + tx * tile + jx, y + ty * tile + jy, tile, tile);
-        else ctx.fillRect(x + tx * tile + jx, y + ty * tile + jy, tile, tile);
+        if (ok) ctx.drawImage(img, tx * src, ty * src, src, src, x + tx * tile + jx, y + ty * tile + jy, drawn, drawn);
+        else ctx.fillRect(x + tx * tile + jx, y + ty * tile + jy, drawn, drawn);
       }
       if (p < 0.3) {                                      // 터지는 순간의 백색 섬광
         ctx.globalAlpha = (1 - p / 0.3) * 0.9;

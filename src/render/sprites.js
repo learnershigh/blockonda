@@ -1,6 +1,7 @@
 import { PALETTE } from '../config.js';
 import { isReady, sprites } from '../assets.js';
 import { LINK } from '../game/dirs.js';
+import { seamBleed } from './canvas.js';
 
 /**
  * 원본 스프라이트의 기준 자세
@@ -53,11 +54,14 @@ export function drawSegment(ctx, x, y, size, color, segment, ghost = false) {
 
 function drawTransformed(ctx, img, x, y, size, angle, flip) {
   if (!isReady(img)) return false;
+  // 소수 배율에서는 칸을 화면 한 픽셀만큼 키워 이웃과 겹친다 — 사이가 벌어지지 않는다.
+  // 중심을 기준으로 그리므로 사방으로 반 픽셀씩 늘어난다.
+  const drawn = size + seamBleed();
   ctx.save();
   ctx.translate(x + size / 2, y + size / 2);
   if (flip) ctx.scale(-1, 1);
   if (angle) ctx.rotate(angle);
-  ctx.drawImage(img, -size / 2, -size / 2, size, size);
+  ctx.drawImage(img, -drawn / 2, -drawn / 2, drawn, drawn);
   ctx.restore();
   return true;
 }

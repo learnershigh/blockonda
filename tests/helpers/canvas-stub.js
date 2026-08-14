@@ -17,11 +17,14 @@ export function createStubContext() {
       m[0] = a * co + c * si; m[1] = b * co + d * si;
       m[2] = -a * si + c * co; m[3] = -b * si + d * co;
     },
-    drawImage(img) {
+    drawImage(img, ...args) {
       const [a, b, c, d] = m;
+      // drawImage(img, dx, dy, dw, dh) / drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh)
+      const [w, h] = args.length >= 8 ? args.slice(6, 8) : args.slice(2, 4);
       target.draws.push({
         src: img.src,
         alpha: target.globalAlpha,
+        w, h,                          // 실제로 그린 크기 (이음매 보정 포함)
         x: m[4], y: m[5],              // 로컬 (0,0) = 칸 중심
         nose: [round(-a), round(-b)],  // 원본이 왼쪽(-x)을 보므로 실제 바라보는 방향
         // 원본 기준 방향이 화면에서 어디를 향하게 되는지

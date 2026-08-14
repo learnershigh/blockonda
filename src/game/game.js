@@ -1,12 +1,13 @@
 import { DESIGN_MS, MAX_LEN, MIN_LEN, PALETTE, SCORE, SPAWN_ROW, SPEED } from '../config.js';
 import { Board } from './board.js';
-import { resolveClears } from './clear.js';
+import { Cascade } from './clear.js';
 import { dirCode } from './dirs.js';
 import { Snake, TURN } from './snake.js';
 
 export const PHASE = {
   DESIGN: 'design', // 5초 동안 방향키로 모양을 만드는 중
   FALL: 'fall',     // 모양이 확정되어 떨어지는 중
+  CLEAR: 'clear',   // 연쇄 삭제가 한 단계씩 진행되는 중 — 조작할 조각이 없다
 };
 
 export const ACTION = {
@@ -22,7 +23,7 @@ export const EVENT = {
   MOVE: 'move',          // 설계 중 머리 이동 / 낙하 중 좌우 이동
   SELF_HIT: 'self-hit',  // 자기 몸에 부딪혀 그 자리에서 굳음
   LAND: 'land',          // 바닥이나 블록에 닿아 고정 { cells, distance }
-  CLEAR: 'clear',        // 덩어리 삭제 { rounds }
+  CLEAR: 'clear',        // 덩어리 삭제 — 연쇄 한 라운드마다 한 번 { chain, groups, cells, points }
   OVER: 'over',          // 게임 오버
 };
 
@@ -50,11 +51,13 @@ export class Game {
     this.placed = 0;     // 쌓은 블록 수 (낙하 속도의 기준)
     this.over = false;
     this.colorBag = [];
+    this.cascade = null; // 연쇄 삭제가 진행 중일 때만 있다
     this.next = this.#randomPiece();
     this.spawn();
   }
 
   spawn() {
+    this.cascade = null;
     const { len, color, dir } = this.next;
     this.snake = Snake.spawn(len, color, dir, this.board.cols, SPAWN_ROW);
     this.next = this.#randomPiece();
@@ -72,13 +75,14 @@ export class Game {
   }
 
   input(action) {
-    if (this.over) return;
+    if (this.over || this.phase === PHASE.CLEAR) return; // 연쇄가 끝날 때까지는 조작할 조각이 없다
     if (this.phase === PHASE.DESIGN) return this.#designInput(action);
     return this.#fallInput(action);
   }
 
   update(dt) {
     if (this.over) return;
+    if (this.phase === PHASE.CLEAR) return this.#updateCascade(dt);
     if (this.phase === PHASE.DESIGN) {
       this.designLeft -= dt;
       if (this.designLeft <= 0) this.confirm();
@@ -99,6 +103,12 @@ export class Game {
 
   /** 설계 타임 남은 시간(초, 표시용) */
   get designSeconds() { return Math.max(0, this.designLeft) / 1000; }
+
+  /**
+   * 화면에 그릴 조각이 있는가.
+   * 연쇄 연출 중에는 snake가 이미 필드에 굳어 있어서 그대로 그리면 두 겹으로 보인다.
+   */
+  get hasPiece() { return !this.over && this.phase !== PHASE.CLEAR; }
 
   #designInput(action) {
     const turn = {
@@ -165,14 +175,27 @@ export class Game {
     this.board.lock(this.snake.cells, this.snake.color, dirCode(dx, dy));
     this.placed++;
 
-    const rounds = resolveClears(this.board);
-    for (const round of rounds) {
-      this.score += round.points;
-      this.lines += round.groups;
-    }
-    if (rounds.length) this.#emit(EVENT.CLEAR, { rounds });
+    // 터질 게 있으면 연쇄를 한 단계씩 진행하고(그동안 다음 조각은 기다린다), 없으면 곧장 다음 조각
+    this.cascade = new Cascade(this.board);
+    if (this.#popRound()) this.phase = PHASE.CLEAR;
+    else this.spawn();
+  }
 
-    if (!this.over) this.spawn();
+  /** 연쇄 한 라운드를 터뜨리고 점수에 반영한다. 터질 게 없으면 false */
+  #popRound() {
+    const round = this.cascade.pop();
+    if (!round) return false;
+    this.score += round.points;
+    this.lines += round.groups;
+    this.#emit(EVENT.CLEAR, round);
+    return true;
+  }
+
+  /** 터짐 → 낙하 → 자리잡음을 시간에 맞춰 밟아 나가고, 연쇄가 끝나면 다음 조각을 부른다 */
+  #updateCascade(dt) {
+    if (this.cascade.step(dt)) return; // 아직 떨어지는 중
+    if (this.#popRound()) return;      // 낙하로 새 연결이 생겼다 — 다음 연쇄
+    this.spawn();
   }
 
   #randomPiece() {

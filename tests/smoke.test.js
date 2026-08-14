@@ -54,7 +54,7 @@ describe('부팅', () => {
     assert.ok(listeners['doc:keydown'], '키 입력 연결');
     assert.ok(listeners['overlay:click'], '오버레이 클릭 연결');
     assert.ok(listeners['win:blur'], '포커스 이탈 시 일시정지 연결');
-    assert.match(els.overlay.innerHTML, /TETRIS/, '시작 화면 표시');
+    assert.match(els.overlay.innerHTML, /BLOCKONDA/, '시작 화면 표시');
 
     step(); // 첫 프레임
     assert.ok(els.board.getContext().draws.length > 0, '보드에 뭔가 그려진다');
@@ -78,5 +78,18 @@ describe('부팅', () => {
     press('Space');
     step();
     assert.ok(Number(els.score.textContent) > 0);
+  });
+
+  // 확정 연출은 이벤트가 아니라 루프가 phase 전환을 보고 건다 — 그 배선을 확인한다
+  it('모양을 확정하면 뱀이 한 겹 더 그려진다', () => {
+    const ctx = els.board.getContext();
+    ctx.draws.length = 0;
+    step();
+    const designing = ctx.draws.length; // 설계 중인 평범한 프레임
+
+    press('Space');                     // 모양 확정
+    ctx.draws.length = 0;
+    step();
+    assert.ok(ctx.draws.length > designing, '하얗게 번쩍이는 겹이 얹힌다');
   });
 });
