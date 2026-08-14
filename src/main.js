@@ -1,8 +1,9 @@
 import { loadSprites } from './assets.js';
-import { CELL, COLS, PREVIEW, ROWS } from './config.js';
+import { BOX_FRAME, CELL, COLS, PREVIEW, ROWS } from './config.js';
 import { Game } from './game/game.js';
 import { bindKeys } from './input.js';
 import { startLoop } from './loop.js';
+import { applyBoxFrame } from './render/box-frame.js';
 import { createContext } from './render/canvas.js';
 import { Effects } from './render/effects.js';
 import { Hud } from './render/hud.js';
@@ -13,6 +14,8 @@ const INTRO = '블록이 나오면 <b>5초</b> 동안 방향키로 머리를 움
   + '같은 색 덩어리가 좌우 벽에 모두 닿으면 삭제!<br>클릭 또는 아무 키나 눌러 시작';
 
 loadSprites();
+// 실패해도 게임은 그대로 — 패널이 기본 테두리로 남을 뿐이다
+applyBoxFrame(BOX_FRAME.src, BOX_FRAME).catch(() => {});
 
 const boardCtx = createContext(document.getElementById('board'), COLS * CELL, ROWS * CELL);
 const previewCtx = createContext(document.getElementById('next'), PREVIEW.w, PREVIEW.h);

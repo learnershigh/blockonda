@@ -31,6 +31,10 @@ export const SPEED = {
   step: 60,       // 얼마나 빨라지는지(ms)
 };
 
+// UI 패널 테두리로 쓰는 9-slice 박스 (assets/Box00.png)
+// slice = 그림에서 테두리 장식이 차지하는 두께(px). 그림을 바꾸면 이 값만 맞추면 된다.
+export const BOX_FRAME = { src: 'assets/Box00.png', slice: 5, scale: 3 };
+
 export const FX = {
   dissolveMs: 420,  // 디졸브 지속
   rowFlashMs: 170,  // 삭제된 줄을 훑는 섬광

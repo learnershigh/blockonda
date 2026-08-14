@@ -15,7 +15,7 @@ body {
 #wrap { display: flex; gap: 18px; padding: 20px; }
 
 .side {
-  width: 132px;
+  width: 150px;
   height: 634px; /* 보드 높이(21칸 x 30px) + 테두리 */
   display: flex;
   flex-direction: column;
@@ -69,3 +69,21 @@ canvas.preview { display: block; margin: 0 auto; }
 .keys { font-size: 11px; color: #8b949e; line-height: 2; }
 .keys b { color: #c9d1d9; display: inline-block; min-width: 50px; font-weight: 600; }
 .keys .sec { color: #4cd964; letter-spacing: 1px; }
+
+/* ---- 9-slice 박스 프레임 (assets/Box00.png) ----
+   그림이 준비되면 box-frame.js가 .box-ui와 --box-* 변수를 켠다.
+   실패하면 위의 기본 테두리가 그대로 남는다. */
+:root { --frame: 15px; }
+
+.box-ui .panel,
+.box-ui #stage {
+  background: none;
+  border: var(--frame) solid transparent;
+  border-image: var(--box-image) var(--box-slice) fill stretch;
+  border-radius: 0;
+  image-rendering: pixelated;
+}
+
+.box-ui .panel { padding: 4px 8px 8px; }
+.box-ui .side { height: 660px; } /* 보드(630) + 프레임 위아래 */
+.box-ui #board { border: none; border-radius: 0; }
