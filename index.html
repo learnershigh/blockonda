@@ -79,7 +79,7 @@
 const COLS = 10, ROWS = 20, CS = 30;   // 필드 10x20, 셀 30px
 const PW = 108, PH = 84;               // 프리뷰 캔버스
 const DESIGN_MS = 5000;                // 모양 설계 타임
-const MIN_LEN = 4, MAX_LEN = 8;        // 블록 길이 범위
+const MIN_LEN = 3, MAX_LEN = 6;        // 블록 길이 범위
 
 // 블록 색 팔레트 — 필드 셀에는 1부터 시작하는 인덱스로 저장(0 = 빈 칸)
 const PALETTE = ['#ff5a5f', '#5b8cff', '#f5c542'];
@@ -329,7 +329,7 @@ function headDot(ctx, px, py, size) { // 설계 중 조종하는 머리 표시
 function drawPreview(ctx, p) {
   ctx.clearRect(0, 0, PW, PH);
   if (!p) return;
-  const s = 10; // 최대 8칸 세로도 들어가게 작은 셀
+  const s = 13; // 최대 6칸 세로가 들어가는 크기
   const ox = (PW - s) / 2, oy = (PH - p.len * s) / 2;
   for (let i = 0; i < p.len; i++) drawCell(ctx, ox, oy + i * s, s, PALETTE[p.color - 1]);
   headDot(ctx, ox, oy + (p.len - 1) * s, s); // 머리 = 맨 아래
