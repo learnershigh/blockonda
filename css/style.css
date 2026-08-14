@@ -22,7 +22,8 @@
 html, body { height: 100%; }
 
 body {
-  background: #0b0e14;
+  /* 게임 화면 바깥 배경 그림. 못 불러오면 아래 단색이 그대로 남는다. */
+  background: #0b0e14 url('../assets/BG00.png') center / cover no-repeat fixed;
   color: #e6edf3;
   font-family: Galmuri11, ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
   -webkit-font-smoothing: none;   /* 안티에일리어싱을 끄면 픽셀이 뭉개지지 않는다 */
@@ -33,7 +34,16 @@ body {
   -webkit-user-select: none;
 }
 
-#wrap { display: flex; gap: 18px; padding: 20px; }
+/* 배경 그림 위에 어두운 막을 한 겹 깔아 UI 글자가 묻히지 않게 한다 */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 10, 18, .55);
+  pointer-events: none;
+}
+
+#wrap { position: relative; display: flex; gap: 18px; padding: 20px; }
 
 .side {
   width: 150px;
@@ -85,10 +95,12 @@ canvas.preview { display: block; margin: 0 auto; }
 }
 #overlay.hidden { display: none; }
 #overlay .big { font-size: 22px; letter-spacing: 6px; font-weight: 700; color: #58a6ff; }
-#overlay .small { font-size: 11px; color: #9aa4b2; line-height: 1.9; }
+/* keep-all: 한글이 음절 단위로 잘리지 않고 어절(띄어쓰기)에서만 줄바꿈된다. */
+#overlay .small { font-size: 11px; color: #9aa4b2; line-height: 1.9; word-break: keep-all; padding: 0 12px; }
 
 .keys { font-size: 11px; color: #8b949e; line-height: 2; }
-.keys b { color: #c9d1d9; display: inline-block; min-width: 50px; font-weight: 700; }
+/* 44px = 11px x 4. 라벨 + "소프트드롭"(55px)이 박스 프레임 안쪽 104px에 들어가야 한다. */
+.keys b { color: #c9d1d9; display: inline-block; min-width: 44px; font-weight: 700; }
 .keys .sec { color: #4cd964; letter-spacing: 1px; }
 
 /* ---- 9-slice 박스 프레임 (assets/Box00.png) ----

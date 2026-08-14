@@ -3,7 +3,7 @@ import { dirVec, LINK } from '../game/dirs.js';
 import { drawSegment } from './sprites.js';
 
 const BOARD_BG = '#0d1320';
-const GRID_LINE = 'rgba(255,255,255,0.045)';
+const CHECKER = 'rgba(255,255,255,0.045)'; // 체커보드에서 밝게 칠하는 칸
 
 /** 필드 + 조작 중인 뱀 + 섀도우 + 삭제 이펙트 */
 export function drawBoard(ctx, game, effects) {
@@ -15,7 +15,7 @@ export function drawBoard(ctx, game, effects) {
   const [sx, sy] = effects ? effects.shakeOffset() : [0, 0];
   if (sx || sy) ctx.translate(sx, sy);
 
-  drawGrid(ctx, w, h);
+  drawGrid(ctx);
   drawStack(ctx, game.board);
   if (!game.over) drawSnake(ctx, game);
   if (effects && effects.busy) effects.draw(ctx);
@@ -39,13 +39,12 @@ export function drawPreview(ctx, piece) {
   }
 }
 
-function drawGrid(ctx, w, h) {
-  ctx.strokeStyle = GRID_LINE;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let c = 1; c < COLS; c++) { ctx.moveTo(c * CELL + 0.5, 0); ctx.lineTo(c * CELL + 0.5, h); }
-  for (let r = 1; r < ROWS; r++) { ctx.moveTo(0, r * CELL + 0.5); ctx.lineTo(w, r * CELL + 0.5); }
-  ctx.stroke();
+/** 체커보드 바닥. 선을 긋는 대신 한 칸 걸러 한 칸만 살짝 밝게 칠한다. */
+function drawGrid(ctx) {
+  ctx.fillStyle = CHECKER;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = r % 2; c < COLS; c += 2) ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+  }
 }
 
 /** 쌓인 블록. 머리와 꺾인 자리(코너)는 쌓인 뒤에도 그대로 남는다. */
