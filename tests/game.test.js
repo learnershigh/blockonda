@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DESIGN_MS, MAX_LEN, MIN_LEN, ROWS, SPAWN_ROW } from '../src/config.js';
+import { MAX_LEN, MIN_LEN, PACE, ROWS, SPAWN_ROW } from '../src/config.js';
 import { ACTION, EVENT, Game, PHASE } from '../src/game/game.js';
 
 const FLOOR = ROWS - 1;
@@ -18,7 +18,7 @@ describe('Game', () => {
   it('설계 페이즈로 시작하고, 길이/방향이 규칙 범위 안이다', () => {
     const game = new Game();
     assert.equal(game.phase, PHASE.DESIGN);
-    assert.equal(game.designLeft, DESIGN_MS);
+    assert.equal(game.designLeft, PACE.designMax, '0점에서는 가장 넉넉하게');
     assert.ok(game.snake.cells.every(([r]) => r === SPAWN_ROW), '위에서 한 칸 떨어져 등장');
 
     const lengths = new Set(), dirs = new Set();
@@ -33,9 +33,9 @@ describe('Game', () => {
     assert.deepEqual([...dirs].sort(), [-1, 1], '좌우 방향이 모두 나온다');
   });
 
-  it('5초가 지나면 저절로 확정되어 낙하하고, 바닥에서 고정된 뒤 다음 조각이 나온다', () => {
+  it('설계 시간이 다 되면 저절로 확정되어 낙하하고, 바닥에서 고정된 뒤 다음 조각이 나온다', () => {
     const game = gameWith({ len: 4, color: 1, dir: 1 });
-    game.update(DESIGN_MS);
+    game.update(game.designTime);
     assert.equal(game.phase, PHASE.FALL);
 
     for (let i = 0; i < 400 && game.placed === 0; i++) game.update(100);
@@ -173,12 +173,109 @@ describe('Game', () => {
     assert.ok(game.over);
   });
 
-  it('블록을 쌓을수록 낙하가 빨라진다', () => {
-    const game = new Game();
-    const start = game.dropInterval;
-    game.placed = 100;
-    assert.ok(game.dropInterval < start);
-    game.placed = 100000;
-    assert.equal(game.dropInterval, 90, '하한선');
+  describe('콤보', () => {
+    /** 바닥 왼쪽 6칸을 미리 채워두고, 이번 조각으로 오른쪽 4칸을 메워 한 줄을 터뜨린다 */
+    function clearOnce(game, color) {
+      game.next = { len: 4, color, dir: 1 };
+      game.spawn();
+      for (let c = 0; c < 6; c++) { game.board.color[FLOOR][c] = color; game.board.pieceId[FLOOR][c] = 99; }
+      game.confirm();
+      while (game.snake.cells.some(([, c]) => c < 6)) game.input(ACTION.RIGHT);
+      game.input(ACTION.SPACE);
+      for (let i = 0; i < 100 && game.phase === PHASE.CLEAR; i++) game.update(20);
+    }
+
+    it('조각이 바뀌어도 계속 터뜨리는 동안은 콤보가 이어진다', () => {
+      const combos = [];
+      const game = new Game({ onEvent: (type, data) => { if (type === EVENT.CLEAR) combos.push(data.combo); } });
+
+      clearOnce(game, 2);
+      assert.equal(game.combo, 1);
+      clearOnce(game, 2);
+      assert.equal(game.combo, 2, '다음 조각으로 또 터뜨리면 이어진다');
+      clearOnce(game, 3);
+      assert.deepEqual(combos, [1, 2, 3], 'clear 이벤트가 지금 콤보를 함께 알린다');
+    });
+
+    it('아무것도 못 터뜨린 조각이 굳으면 콤보가 끊긴다', () => {
+      const game = new Game();
+      clearOnce(game, 2);
+      assert.equal(game.combo, 1);
+
+      game.next = { len: 4, color: 1, dir: 1 };
+      game.spawn();
+      game.confirm();
+      game.input(ACTION.SPACE); // 빈 바닥에 그냥 쌓이기만 한다
+      assert.equal(game.combo, 0);
+      assert.equal(game.phase, PHASE.DESIGN, '터진 게 없으니 곧장 다음 조각');
+    });
+
+    it('한 조각 안의 연쇄도 라운드마다 콤보를 올린다', () => {
+      const rounds = [];
+      const game = gameWith({ len: 4, color: 3, dir: 1 },
+        { onEvent: (type, data) => { if (type === EVENT.CLEAR) rounds.push(data); } });
+
+      // 바닥 한 줄(빨강)이 터지면 그 위 조각들이 내려앉으며 두 번째 줄(초록)이 완성된다
+      for (let c = 0; c < 10; c++) { game.board.color[FLOOR][c] = 1; game.board.pieceId[FLOOR][c] = 99; }
+      for (let c = 0; c < 10; c++) {
+        if (c === 5) continue;
+        game.board.color[FLOOR - 1][c] = 2;
+        game.board.pieceId[FLOOR - 1][c] = 98;
+      }
+      game.board.color[FLOOR - 2][5] = 2; // 빈 자리로 내려앉아 줄을 잇는 한 칸
+      game.board.pieceId[FLOOR - 2][5] = 97;
+
+      game.confirm();
+      game.input(ACTION.SPACE); // 얹히기만 해도 판정은 시작된다
+      for (let i = 0; i < 200 && game.phase === PHASE.CLEAR; i++) game.update(20);
+
+      assert.deepEqual(rounds.map(r => r.chain), [1, 2], '두 번에 걸쳐 터진다');
+      assert.deepEqual(rounds.map(r => r.combo), [1, 2], '연쇄 라운드마다 콤보도 오른다');
+      assert.equal(game.combo, 2);
+    });
+
+    it('reset하면 콤보도 처음으로 돌아간다', () => {
+      const game = new Game();
+      clearOnce(game, 2);
+      assert.equal(game.combo, 1);
+      game.reset();
+      assert.equal(game.combo, 0);
+    });
+  });
+
+  describe('점수에 따른 난이도', () => {
+    it('설계 시간과 낙하 간격이 점수를 따라 함께 조여진다', () => {
+      const game = new Game();
+      assert.equal(game.designTime, PACE.designMax);
+      assert.equal(game.dropInterval, PACE.dropMax);
+
+      game.score = PACE.full / 2;
+      assert.equal(game.pace, 0.5);
+      assert.equal(game.designTime, (PACE.designMax + PACE.designMin) / 2, '딱 중간');
+      assert.equal(game.dropInterval, (PACE.dropMax + PACE.dropMin) / 2);
+
+      game.score = PACE.full;
+      assert.equal(game.designTime, PACE.designMin);
+      assert.equal(game.dropInterval, PACE.dropMin);
+    });
+
+    it('최고 난이도에서 더 조여지지는 않는다', () => {
+      const game = new Game();
+      game.score = PACE.full * 100;
+      assert.equal(game.pace, 1);
+      assert.equal(game.designTime, PACE.designMin, '3초가 하한');
+      assert.equal(game.dropInterval, PACE.dropMin);
+    });
+
+    it('설계 시간은 조각이 나온 시점의 점수로 정해진다', () => {
+      const game = gameWith({ len: 4, color: 1, dir: 1 });
+      assert.equal(game.designLeft, PACE.designMax);
+
+      game.score = PACE.full;      // 점수를 벌었어도 이번 조각의 시간은 그대로
+      assert.equal(game.designLeft, PACE.designMax, '진행 중인 설계를 중간에 깎지 않는다');
+
+      game.spawn();                // 다음 조각부터 짧아진다
+      assert.equal(game.designLeft, PACE.designMin);
+    });
   });
 });

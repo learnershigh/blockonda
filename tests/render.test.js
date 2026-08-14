@@ -6,7 +6,7 @@ import { createStubContext, stubImages } from './helpers/canvas-stub.js';
 stubImages(); // assets.js가 Image를 쓰기 전에 준비
 
 const { loadSprites } = await import('../src/assets.js');
-const { CELL, CONFIRM, FX, PENALTY, ROWS } = await import('../src/config.js');
+const { CELL, COLS, COMBO, CONFIRM, FX, PENALTY, ROWS } = await import('../src/config.js');
 const { Game, ACTION } = await import('../src/game/game.js');
 const { Effects } = await import('../src/render/effects.js');
 const { drawBoard, drawPreview } = await import('../src/render/renderer.js');
@@ -241,6 +241,77 @@ describe('삭제 이펙트', () => {
     fx.draw(ctx);
     assert.ok(ctx.draws.length > 10, '칸당 여러 조각');
     assert.ok(ctx.draws.every(d => d.alpha <= 1));
+  });
+});
+
+describe('콤보 표시', () => {
+  const round = combo => ({
+    chain: 1, groups: 1, points: 100, combo,
+    cells: [{ r: ROWS - 1, c: 0, color: 2, head: 0 }],
+  });
+  /** 팝업 하나를 그려서 기록을 돌려준다 */
+  const paint = combo => {
+    const ctx = createStubContext();
+    const fx = new Effects();
+    fx.spawn(round(combo));
+    fx.draw(ctx);
+    return { fx, ctx, text: ctx.texts[0] };
+  };
+  const fontSize = text => +/(\d+)px/.exec(text.font)[1];
+
+  it(`${COMBO.min}콤보부터 "nCombo!"가 뜬다`, () => {
+    const { text } = paint(COMBO.min);
+    assert.ok(text, '팝업이 그려진다');
+    assert.equal(text.text, `${COMBO.min}Combo!`);
+    assert.equal(text.x, COLS * CELL / 2, '필드 가로 한가운데');
+    assert.ok(text.y > 0 && text.y < ROWS * CELL, '필드 안에 뜬다');
+    assert.ok(text.scale > 1, '나타나는 순간 크게 튄다');
+  });
+
+  it('한 번 터진 걸로는 뜨지 않는다', () => {
+    const { fx, ctx } = paint(COMBO.min - 1);
+    assert.equal(fx.combo, null);
+    assert.deepEqual(ctx.texts, []);
+  });
+
+  it('콤보가 쌓일수록 글자가 커지고 색이 뜨거워진다', () => {
+    const low = paint(COMBO.min).text;
+    const high = paint(COMBO.min + 2).text;
+    assert.ok(fontSize(high) > fontSize(low), '더 크게');
+    assert.notEqual(high.color, low.color, '색도 달라진다');
+
+    const huge = paint(COMBO.min + 99).text;
+    assert.equal(fontSize(huge), COMBO.maxSize, '그래도 상한이 있다');
+    assert.equal(huge.color, COMBO.colors[COMBO.colors.length - 1], '색도 마지막 색에서 멈춘다');
+  });
+
+  it('연쇄가 이어지면 최신 콤보 하나만 띄운다', () => {
+    const ctx = createStubContext();
+    const fx = new Effects();
+    fx.spawn(round(2));
+    fx.update(60);
+    fx.spawn(round(3));
+    fx.draw(ctx);
+    assert.equal(ctx.texts.length, 1, '숫자가 겹치면 읽을 수 없다');
+    assert.equal(ctx.texts[0].text, '3Combo!');
+  });
+
+  it('떠오르며 옅어지다 사라진다', () => {
+    const fx = new Effects();
+    fx.spawn(round(3));
+    fx.draw(createStubContext());
+    const first = fx.combo;
+
+    const ctx = createStubContext();
+    fx.update(COMBO.showMs * 0.9);
+    fx.draw(ctx);
+    assert.ok(ctx.texts[0].y < ROWS * CELL * COMBO.y, '위로 떠오른다');
+    assert.ok(ctx.texts[0].alpha < 1, '끝으로 갈수록 옅어진다');
+    assert.equal(fx.combo, first, '아직 떠 있다');
+
+    fx.update(COMBO.showMs * 0.2);
+    assert.equal(fx.combo, null);
+    assert.ok(!fx.busy, '다 지나가면 그릴 것도 없다');
   });
 });
 

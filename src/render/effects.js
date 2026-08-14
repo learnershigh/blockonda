@@ -1,4 +1,4 @@
-import { CELL, COLS, CONFIRM, DROP, FX, PALETTE, PENALTY } from '../config.js';
+import { CELL, COLS, COMBO, CONFIRM, DROP, FX, PALETTE, PENALTY, ROWS } from '../config.js';
 import { isReady } from '../assets.js';
 import { dirVec } from '../game/dirs.js';
 import { seamBleed } from './canvas.js';
@@ -7,6 +7,7 @@ import { pickSprite } from './sprites.js';
 /**
  * 삭제/착지 연출. 게임 로직과 분리되어 있어 시간(update)과 그리기(draw)만 담당한다.
  *  - 디졸브 : 칸을 조각으로 쪼개 흩날리며 사라짐
+ *  - 콤보   : 연속으로 터뜨린 횟수를 "nCombo!"로 띄움
  *  - 타격감 : 백색 섬광 + 화면 흔들림 + 짧은 정지(hitstop)
  *  - 착지   : 카메라가 아래로 쿡 눌렸다 돌아오고, 부딪힌 면에서 먼지가 튄다
  *  - 페널티 : 자기 몸을 밟으면 화면이 흔들리고 뱀이 붉게 달아오른다
@@ -25,6 +26,7 @@ export class Effects {
     this.rows = [];    // 삭제된 줄을 훑는 섬광
     this.dust = [];    // 착지 먼지
     this.sparks = [];  // 확정 순간 튀는 반짝임
+    this.combo = null; // 떠 있는 "nCombo!" 한 개 { n, born }
     this.time = 0;
     this.shake = 0;
     this.hitstop = 0;
@@ -43,11 +45,11 @@ export class Effects {
   get confirmGlow() { return this.glowLeft / CONFIRM.flashMs; }
   get busy() {
     return this.cells.length > 0 || this.rows.length > 0
-      || this.dust.length > 0 || this.sparks.length > 0;
+      || this.dust.length > 0 || this.sparks.length > 0 || this.combo !== null;
   }
 
   /** clear 이벤트가 넘겨준 연쇄 한 라운드로 연출을 만든다 */
-  spawn({ cells, chain }) {
+  spawn({ cells, chain, combo = 0 }) {
     const rows = new Set();
     for (const { r, c, color, head, tail, link } of cells) {
       const seed = [], jitter = [];
@@ -61,6 +63,10 @@ export class Effects {
     for (const r of rows) this.rows.push({ r, born: this.time });
     this.shake = Math.min(FX.shakeMax, this.shake + 6 + cells.length * 0.25 + (chain - 1) * 4);
     this.hitstop = Math.max(this.hitstop, 90 + (chain - 1) * 40);
+
+    // 한 번에 하나만 띄운다. 연쇄가 빠르게 이어질 때 숫자가 겹치면 오히려 못 읽는다 —
+    // 뒤엣것이 앞엣것을 밀어내며 새로 튀어오르는 편이 "지금 몇 콤보인지" 더 잘 보인다.
+    if (combo >= COMBO.min) this.combo = { n: combo, born: this.time };
   }
 
   /**
@@ -134,6 +140,7 @@ export class Effects {
     if (this.flashLeft > 0) this.flashLeft = Math.max(0, this.flashLeft - dt);
     if (this.glowLeft > 0) this.glowLeft = Math.max(0, this.glowLeft - dt);
     if (this.quiverLeft > 0) this.quiverLeft = Math.max(0, this.quiverLeft - dt);
+    if (this.combo && this.time - this.combo.born >= COMBO.showMs) this.combo = null;
     if (this.cells.length) this.cells = this.cells.filter(f => this.time - f.born < FX.dissolveMs);
     if (this.rows.length) this.rows = this.rows.filter(f => this.time - f.born < FX.rowFlashMs);
     if (this.dust.length) {
@@ -178,6 +185,42 @@ export class Effects {
     this.#drawDissolve(ctx);
     this.#drawDust(ctx);
     this.#drawSparks(ctx);
+    ctx.globalAlpha = 1;
+    this.#drawCombo(ctx); // 맨 마지막 — 쌓인 블록에도 디졸브에도 가리지 않는다
+  }
+
+  /**
+   * "nCombo!" 팝업. 튀어오르며 나타나 천천히 떠오르다 사라진다.
+   * 콤보가 쌓일수록 글자가 커지고 색이 뜨거워져서, 숫자를 읽지 않아도 기세가 보인다.
+   */
+  #drawCombo(ctx) {
+    if (!this.combo) return;
+    const { n, born } = this.combo;
+    const age = this.time - born;
+    const p = age / COMBO.showMs;
+    if (p >= 1) return;
+
+    const pop = 1 + (COMBO.popScale - 1) * Math.max(0, 1 - age / COMBO.popMs);
+    const size = Math.min(COMBO.maxSize, COMBO.size + (n - COMBO.min) * COMBO.grow);
+    const color = COMBO.colors[Math.min(COMBO.colors.length - 1, n - COMBO.min)];
+    const x = COLS * CELL / 2;
+    const y = ROWS * CELL * COMBO.y - COMBO.rise * (1 - (1 - p) * (1 - p)); // 끝으로 갈수록 천천히
+    const text = `${n}Combo!`;
+
+    ctx.save();
+    ctx.globalAlpha = p < COMBO.fadeAt ? 1 : 1 - (p - COMBO.fadeAt) / (1 - COMBO.fadeAt);
+    ctx.translate(x, y);
+    ctx.scale(pop, pop);
+    ctx.font = `700 ${size}px ${COMBO.font}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = COMBO.outlineWidth;
+    ctx.lineJoin = 'round'; // 획 끝이 뾰족하게 삐져나오지 않게
+    ctx.strokeStyle = COMBO.outline;
+    ctx.strokeText(text, 0, 0);
+    ctx.fillStyle = color;
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
     ctx.globalAlpha = 1;
   }
 

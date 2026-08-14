@@ -1,11 +1,11 @@
-import { DESIGN_MS, MAX_LEN, MIN_LEN, PALETTE, SCORE, SPAWN_ROW, SPEED } from '../config.js';
+import { MAX_LEN, MIN_LEN, PACE, PALETTE, SCORE, SPAWN_ROW } from '../config.js';
 import { Board } from './board.js';
 import { Cascade } from './clear.js';
 import { dirCode } from './dirs.js';
 import { Snake, TURN } from './snake.js';
 
 export const PHASE = {
-  DESIGN: 'design', // 5초 동안 방향키로 모양을 만드는 중
+  DESIGN: 'design', // 정해진 시간 동안 방향키로 모양을 만드는 중
   FALL: 'fall',     // 모양이 확정되어 떨어지는 중
   CLEAR: 'clear',   // 연쇄 삭제가 한 단계씩 진행되는 중 — 조작할 조각이 없다
 };
@@ -23,7 +23,7 @@ export const EVENT = {
   MOVE: 'move',          // 설계 중 머리 이동 / 낙하 중 좌우 이동
   SELF_HIT: 'self-hit',  // 자기 몸에 부딪혀 그 자리에서 굳음
   LAND: 'land',          // 바닥이나 블록에 닿아 고정 { cells, distance }
-  CLEAR: 'clear',        // 덩어리 삭제 — 연쇄 한 라운드마다 한 번 { chain, groups, cells, points }
+  CLEAR: 'clear',        // 덩어리 삭제 — 연쇄 한 라운드마다 한 번 { chain, combo, groups, cells, points }
   OVER: 'over',          // 게임 오버
 };
 
@@ -48,7 +48,8 @@ export class Game {
     this.board.clear();
     this.score = 0;
     this.lines = 0;      // 터뜨린 덩어리 수
-    this.placed = 0;     // 쌓은 블록 수 (낙하 속도의 기준)
+    this.combo = 0;      // 연속으로 터뜨린 횟수 — 못 터뜨린 조각이 굳으면 0으로 끊긴다
+    this.placed = 0;     // 쌓은 블록 수 (표시/통계용 — 난이도는 점수를 따른다)
     this.over = false;
     this.colorBag = [];
     this.cascade = null; // 연쇄 삭제가 진행 중일 때만 있다
@@ -62,7 +63,7 @@ export class Game {
     this.snake = Snake.spawn(len, color, dir, this.board.cols, SPAWN_ROW);
     this.next = this.#randomPiece();
     this.phase = PHASE.DESIGN;
-    this.designLeft = DESIGN_MS;
+    this.designLeft = this.designTime; // 조각이 나오는 순간의 점수로 정해지고 그대로 간다
     this.acc = 0;
     if (this.snake.collides(this.board)) this.over = true; // 등장 자리가 이미 막힘
     this.#emit(this.over ? EVENT.OVER : EVENT.SPAWN);
@@ -97,9 +98,17 @@ export class Game {
     }
   }
 
-  get dropInterval() {
-    return Math.max(SPEED.min, SPEED.base - Math.floor(this.placed / SPEED.per) * SPEED.step);
-  }
+  /**
+   * 난이도 진행도 0 → 1. 점수가 오를수록 1에 가까워지고, PACE.full부터는 계속 1이다.
+   * 설계 시간과 낙하 속도가 둘 다 이 값 하나를 따라간다.
+   */
+  get pace() { return Math.min(1, this.score / PACE.full); }
+
+  /** 이번 조각에 주어지는 설계 시간(ms) — 점수가 오를수록 짧아진다 */
+  get designTime() { return PACE.designMax - (PACE.designMax - PACE.designMin) * this.pace; }
+
+  /** 한 칸 떨어지는 데 걸리는 시간(ms) — 점수가 오를수록 짧아진다 */
+  get dropInterval() { return PACE.dropMax - (PACE.dropMax - PACE.dropMin) * this.pace; }
 
   /** 설계 타임 남은 시간(초, 표시용) */
   get designSeconds() { return Math.max(0, this.designLeft) / 1000; }
@@ -178,16 +187,21 @@ export class Game {
     // 터질 게 있으면 연쇄를 한 단계씩 진행하고(그동안 다음 조각은 기다린다), 없으면 곧장 다음 조각
     this.cascade = new Cascade(this.board);
     if (this.#popRound()) this.phase = PHASE.CLEAR;
-    else this.spawn();
+    else {
+      this.combo = 0; // 아무것도 못 터뜨린 채 굳었다 — 여기서 연속이 끊긴다
+      this.spawn();
+    }
   }
 
-  /** 연쇄 한 라운드를 터뜨리고 점수에 반영한다. 터질 게 없으면 false */
+  /** 연쇄 한 라운드를 터뜨리고 점수/콤보에 반영한다. 터질 게 없으면 false */
   #popRound() {
     const round = this.cascade.pop();
     if (!round) return false;
     this.score += round.points;
     this.lines += round.groups;
-    this.#emit(EVENT.CLEAR, round);
+    // 콤보는 연쇄(chain)와 달리 조각이 바뀌어도 이어진다 — 끊는 건 못 터뜨린 착지뿐이다
+    this.combo++;
+    this.#emit(EVENT.CLEAR, { ...round, combo: this.combo });
     return true;
   }
 

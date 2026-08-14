@@ -11,8 +11,9 @@ import { drawBoard, drawPreview } from './render/renderer.js';
 import { Sound } from './sound.js';
 
 const TITLE = 'BLOCKONDA';
-const INTRO = '블록이 나오면 <b>5초</b> 동안 방향키로 머리를 움직여 모양 설계!<br>'
-  + '같은 색 덩어리가 좌우 벽에 모두 닿으면 삭제!<br>클릭 또는 아무 키나 눌러 시작';
+const INTRO = '블록이 나오면 <b>7초</b> 동안 방향키로 머리를 움직여 모양 설계!<br>'
+  + '같은 색 덩어리가 좌우 벽에 모두 닿으면 삭제!<br>'
+  + '점수가 오를수록 설계 시간은 3초까지 줄고 낙하는 빨라진다<br>클릭 또는 아무 키나 눌러 시작';
 
 loadSprites();
 // 실패해도 게임은 그대로 — 패널이 기본 테두리로 남을 뿐이다
@@ -105,7 +106,7 @@ startLoop(dt => {
   sound.setMusic(running); // 일시정지/게임오버에는 멈췄다가 이어서 다시
   if (running && !effects.frozen) game.update(dt);
 
-  // 설계 → 낙하로 넘어간 순간이 곧 "모양 확정"이다. SPACE로 끝내든 5초가 다 되든 여기로 모인다.
+  // 설계 → 낙하로 넘어간 순간이 곧 "모양 확정"이다. SPACE로 끝내든 시간이 다 되든 여기로 모인다.
   // 자기 몸을 밟아 굳은 거라면 붉은 기운이 이미 올라와 있으니 흰 빛으로 덮지 않는다.
   const designing = game.phase === PHASE.DESIGN;
   if (wasDesign && !designing && !effects.penaltyFlash) effects.confirm(game.snake.cells);

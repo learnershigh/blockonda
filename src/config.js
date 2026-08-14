@@ -7,7 +7,6 @@ export const SPAWN_ROW = 1;                   // 맨 위에서 한 칸 떨어진
 
 export const PREVIEW = { w: 108, h: 84, cell: 15 };
 
-export const DESIGN_MS = 5000;                // 모양 설계 타임
 export const MIN_LEN = 3;                     // 뱀 길이 범위
 export const MAX_LEN = 6;
 
@@ -24,11 +23,17 @@ export const SCORE = {
   cell: 10,       // 삭제된 칸 하나 (x 연쇄 배율)
 };
 
-export const SPEED = {
-  base: 750,      // 시작 낙하 간격(ms)
-  min: 90,        // 최대 속도
-  per: 25,        // 블록 몇 개마다
-  step: 60,       // 얼마나 빨라지는지(ms)
+/**
+ * 난이도 곡선. 기준은 점수 하나뿐이고, 설계 시간과 낙하 속도가 같은 진행도를 따라 함께 조여진다.
+ * 0점에서 시작해 full점에 닿으면 최고 난이도가 되며 그 뒤로는 더 빨라지지 않는다.
+ * 진행도는 점수에 정비례한다 — full의 절반을 벌면 딱 중간 난이도다.
+ */
+export const PACE = {
+  full: 2500,       // 이 점수에서 최고 난이도 (덩어리 하나 터뜨리면 100점 남짓)
+  designMax: 7000,  // 설계 타임(ms): 7초에서
+  designMin: 3000,  //                3초까지 줄어든다
+  dropMax: 750,     // 한 칸 낙하 간격(ms): 750에서
+  dropMin: 90,      //                      90까지 빨라진다
 };
 
 // 효과음(assets/sounds/*.wav). 키는 game.js의 EVENT 값과 같아야 한다.
@@ -58,6 +63,25 @@ export const CASCADE = {
   popMs: 160,     // 터진 자리가 빈 채로 멈춰 있는 시간 (히트스톱이 여기에 더 얹힌다)
   fallMs: 45,     // 남은 블록이 한 칸 내려오는 간격
   settleMs: 150,  // 다 내려앉은 모습을 보여주고 나서 다음 연쇄를 판정한다
+};
+
+// 연속 격파 콤보. 덩어리가 터질 때마다 1씩 오르고, 아무것도 못 터뜨린 조각이 굳으면 0으로 돌아간다.
+// 한 조각 안의 연쇄든 다음 조각으로 넘어간 뒤든, "터졌다"가 끊기지 않는 동안은 계속 쌓인다.
+export const COMBO = {
+  min: 2,             // 이 수부터 화면에 띄운다 — 한 번 터진 건 아직 콤보가 아니다
+  y: 0.32,            // 뜨는 높이(필드 높이 대비) — 블록이 쌓이는 아래쪽을 피한다
+  size: 22,           // 기본 글자 크기(px) — Galmuri11이라 11의 배수가 가장 또렷하다
+  grow: 3,            // 콤보 1당 커지는 px
+  maxSize: 44,        // 그래도 이 이상은 커지지 않는다
+  font: 'Galmuri11, ui-monospace, monospace', // CSS의 픽셀 폰트를 그대로 캔버스에서도 쓴다
+  colors: ['#ffd35c', '#ffa53c', '#ff6b3d', '#ff3d6b'], // min부터 한 칸씩 — 오를수록 뜨거워진다
+  outline: '#0d1320', // 필드 배경색으로 두른다 — 쌓인 블록 위에서도 글자가 떠 보인다
+  outlineWidth: 5,
+  showMs: 900,        // 떠 있는 시간
+  rise: 30,           // 그동안 떠오르는 높이(px)
+  popMs: 130,         // 나타나는 순간 크게 튀었다 제 크기로 돌아오는 시간
+  popScale: 1.6,
+  fadeAt: 0.6,        // 수명의 이 지점(0~1)부터 옅어지기 시작한다
 };
 
 export const FX = {

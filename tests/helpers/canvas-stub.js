@@ -1,5 +1,5 @@
 /**
- * drawImage 호출을 변환행렬(좌우반전/회전)과 함께 기록하는 캔버스 스텁.
+ * drawImage / fillText 호출을 변환행렬(좌우반전/회전)과 함께 기록하는 캔버스 스텁.
  * 스프라이트가 "어느 방향을 보고" 그려졌는지까지 검증하기 위한 것.
  */
 export function createStubContext() {
@@ -7,6 +7,7 @@ export function createStubContext() {
   const stack = [];
   const target = {
     draws: [],
+    texts: [],
     globalAlpha: 1,
     save() { stack.push(m.slice()); },
     restore() { if (stack.length) m = stack.pop(); },
@@ -29,6 +30,18 @@ export function createStubContext() {
         nose: [round(-a), round(-b)],  // 원본이 왼쪽(-x)을 보므로 실제 바라보는 방향
         // 원본 기준 방향이 화면에서 어디를 향하게 되는지
         mapDir: ([vx, vy]) => [round(a * vx + c * vy), round(b * vx + d * vy)],
+      });
+    },
+    // 윤곽선(strokeText)은 같은 글자를 한 겹 더 그리는 것뿐이라 기록하지 않는다
+    fillText(text, x, y) {
+      target.texts.push({
+        text,
+        color: target.fillStyle,
+        font: target.font,
+        alpha: target.globalAlpha,
+        scale: round(m[0]),                          // 튀어오르는 배율
+        x: m[0] * x + m[2] * y + m[4],
+        y: m[1] * x + m[3] * y + m[5],
       });
     },
   };
