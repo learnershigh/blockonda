@@ -82,7 +82,17 @@ const DESIGN_MS = 5000;                // 모양 설계 타임
 const MIN_LEN = 3, MAX_LEN = 6;        // 블록 길이 범위
 
 // 블록 색 팔레트 — 필드 셀에는 1부터 시작하는 인덱스로 저장(0 = 빈 칸)
-const PALETTE = ['#ff5a5f', '#5b8cff', '#f5c542'];
+// 스프라이트(assets/Snake_*.png)와 같은 순서: 빨강 / 초록 / 파랑
+const PALETTE = ['#b11616', '#4ab116', '#4916b1'];
+
+// 뱀 스프라이트 — 머리 원본은 왼쪽을 보고 있어서, 오른쪽은 좌우반전 / 위아래는 회전해서 그린다
+const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]]; // heads 칸에 저장되는 방향 코드(인덱스+1)
+const HEAD_IMGS = [], BODY_IMGS = [];
+['00', '01', '02'].forEach((n, i) => {
+  const h = new Image(); h.src = 'assets/Snake_Head' + n + '.png'; HEAD_IMGS[i] = h;
+  const b = new Image(); b.src = 'assets/Snake_Body' + n + '.png'; BODY_IMGS[i] = b;
+});
+function imgReady(img) { return !!(img && img.complete && img.naturalWidth); }
 
 function initCanvas(id, w, h) {
   const cv = document.getElementById(id);
@@ -91,6 +101,7 @@ function initCanvas(id, w, h) {
   cv.style.width = w + 'px'; cv.style.height = h + 'px';
   const ctx = cv.getContext('2d');
   ctx.scale(dpr, dpr);
+  ctx.imageSmoothingEnabled = false; // 16px 도트 스프라이트를 또렷하게
   return ctx;
 }
 const bctx = initCanvas('board', COLS * CS, ROWS * CS);
@@ -99,7 +110,7 @@ const overlay = document.getElementById('overlay');
 const scoreEl = document.getElementById('score');
 const timeEl = document.getElementById('time');
 
-let field, ids, nextId, cur, nextP, colorBag, score, lines, placed;
+let field, ids, heads, nextId, cur, nextP, colorBag, score, lines, placed;
 let phase, designLeft;                 // phase: 'design' | 'fall'
 let over, started, paused, acc;
 let shownScore = -1, shownTime = '';
@@ -164,6 +175,7 @@ function shapeCanMove(dr, dc) {
   });
 }
 function shiftShape(dr, dc) { cur.cells = cur.cells.map(([r, c]) => [r + dr, c + dc]); }
+function dirCode(dx, dy) { return DIRS.findIndex(([x, y]) => x === dx && y === dy) + 1; }
 function moveSide(dc) {
   if (phase !== 'fall') return;
   if (shapeCanMove(0, dc)) shiftShape(0, dc);
@@ -182,7 +194,9 @@ function hardDrop() {
 }
 function lockShape() {
   const id = nextId++; // 이 조각의 모양을 기억 — 삭제 후에도 덩어리째 떨어진다
-  cur.cells.forEach(([r, c]) => { field[r][c] = cur.color; ids[r][c] = id; });
+  cur.cells.forEach(([r, c]) => { field[r][c] = cur.color; ids[r][c] = id; heads[r][c] = 0; });
+  const [hr, hc] = cur.cells[0], [nr, nc] = cur.cells[1];
+  heads[hr][hc] = dirCode(hc - nc, hr - nr); // 머리 칸은 쌓인 뒤에도 머리 스프라이트로
   placed++;
   clearConnected();
   if (!over) spawn();
@@ -244,10 +258,10 @@ function chunkCanFall(ch) {
   return ch.cells.every(([r, c]) => r + 1 < ROWS && (!field[r + 1][c] || ch.set.has((r + 1) + ',' + c)));
 }
 function dropChunk(ch) {
-  const vals = ch.cells.map(([r, c]) => [field[r][c], ids[r][c]]);
-  ch.cells.forEach(([r, c]) => { field[r][c] = 0; ids[r][c] = 0; });
+  const vals = ch.cells.map(([r, c]) => [field[r][c], ids[r][c], heads[r][c]]);
+  ch.cells.forEach(([r, c]) => { field[r][c] = 0; ids[r][c] = 0; heads[r][c] = 0; });
   ch.cells = ch.cells.map(([r, c]) => [r + 1, c]);
-  ch.cells.forEach(([r, c], i) => { field[r][c] = vals[i][0]; ids[r][c] = vals[i][1]; });
+  ch.cells.forEach(([r, c], i) => { field[r][c] = vals[i][0]; ids[r][c] = vals[i][1]; heads[r][c] = vals[i][2]; });
   ch.set = new Set(ch.cells.map(([r, c]) => r + ',' + c));
 }
 function applyGravity() { // 삭제로 뜬 덩어리는 모양 그대로, 지지될 때까지 한 칸씩 낙하
@@ -266,7 +280,7 @@ function clearConnected() {
     if (!comps.length) break;
     chain++; // 낙하로 새 연결이 생기면 연쇄 — 배율 x2, x3...
     let cells = 0;
-    comps.forEach(comp => comp.forEach(([r, c]) => { field[r][c] = 0; ids[r][c] = 0; cells++; }));
+    comps.forEach(comp => comp.forEach(([r, c]) => { field[r][c] = 0; ids[r][c] = 0; heads[r][c] = 0; cells++; }));
     lines += comps.length;
     score += cells * 10 * chain;
     applyGravity();
@@ -288,6 +302,7 @@ function gameOver() {
 function resetGame() {
   field = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
   ids = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+  heads = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
   nextId = 1;
   score = 0; lines = 0; placed = 0;
   over = false; paused = false;
@@ -325,25 +340,36 @@ function drawCell(ctx, px, py, size, color, ghost) {
   ctx.fillRect(px + p, py + p + s - b, s, b);
   ctx.fillRect(px + p + s - b, py + p, b, s);
 }
-// 머리 표시 — 바라보는 방향(dx, dy)으로 뾰족한 삼각형
-function headArrow(ctx, px, py, size, dx, dy) {
-  const cx = px + size / 2, cy = py + size / 2, r = Math.max(3, size * 0.3);
-  ctx.fillStyle = 'rgba(255,255,255,0.92)';
-  ctx.beginPath();
-  ctx.moveTo(cx + dx * r, cy + dy * r);                                   // 꼭짓점 = 진행 방향
-  ctx.lineTo(cx - dx * r + dy * r * 0.85, cy - dy * r + dx * r * 0.85);
-  ctx.lineTo(cx - dx * r - dy * r * 0.85, cy - dy * r - dx * r * 0.85);
-  ctx.closePath();
-  ctx.fill();
+// 스프라이트 한 칸 그리기. 머리 원본은 왼쪽을 보므로 오른쪽은 좌우반전, 위/아래는 회전.
+// 이미지가 아직 안 왔으면 false를 돌려 색 사각형으로 폴백한다.
+function drawSprite(ctx, img, px, py, size, dx, dy) {
+  if (!imgReady(img)) return false;
+  ctx.save();
+  ctx.translate(px + size / 2, py + size / 2);
+  if (dx > 0) ctx.scale(-1, 1);             // 오른쪽 = 좌우반전
+  else if (dy < 0) ctx.rotate(Math.PI / 2); // 위
+  else if (dy > 0) ctx.rotate(-Math.PI / 2);// 아래
+  ctx.drawImage(img, -size / 2, -size / 2, size, size);
+  ctx.restore();
+  return true;
+}
+// 한 칸을 뱀 몸통/머리로 그린다 (head가 있으면 그 방향의 머리)
+function drawSnakeCell(ctx, px, py, size, color, head, ghost) {
+  const img = head ? HEAD_IMGS[color - 1] : BODY_IMGS[color - 1];
+  const [dx, dy] = head || [-1, 0];
+  if (ghost) ctx.globalAlpha = 0.32;
+  const ok = drawSprite(ctx, img, px, py, size, dx, dy);
+  if (ghost) ctx.globalAlpha = 1;
+  if (!ok) drawCell(ctx, px, py, size, PALETTE[color - 1], ghost);
 }
 function drawPreview(ctx, p) {
   ctx.clearRect(0, 0, PW, PH);
   if (!p) return;
   const s = 15; // 최대 6칸 가로가 들어가는 크기
   const ox = (PW - p.len * s) / 2, oy = (PH - s) / 2;
-  for (let i = 0; i < p.len; i++) drawCell(ctx, ox + i * s, oy, s, PALETTE[p.color - 1]);
   const headI = p.dir > 0 ? p.len - 1 : 0; // 머리 = 바라보는 방향 쪽 끝
-  headArrow(ctx, ox + headI * s, oy, s, p.dir, 0);
+  for (let i = 0; i < p.len; i++)
+    drawSnakeCell(ctx, ox + i * s, oy, s, p.color, i === headI ? [p.dir, 0] : null);
 }
 function draw() {
   const W = COLS * CS, H = ROWS * CS;
@@ -358,21 +384,17 @@ function draw() {
 
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
-      if (field[r][c]) drawCell(bctx, c * CS, r * CS, CS, PALETTE[field[r][c] - 1]);
+      if (field[r][c]) // 쌓인 뒤에도 그 조각의 머리 칸은 머리 스프라이트로 남는다
+        drawSnakeCell(bctx, c * CS, r * CS, CS, field[r][c], heads[r][c] ? DIRS[heads[r][c] - 1] : null);
 
   if (cur && !over) {
-    const color = PALETTE[cur.color - 1];
     const d = dropDist();
     const [hr, hc] = cur.cells[0], [nr2, nc2] = cur.cells[1]; // 목 → 머리 = 바라보는 방향
-    const fx = hc - nc2, fy = hr - nr2;
-    if (d > 0) {
-      cur.cells.forEach(([r, c]) => drawCell(bctx, c * CS, (r + d) * CS, CS, color, true));
-      bctx.globalAlpha = 0.4; // 섀도우에도 머리 방향 표시
-      headArrow(bctx, hc * CS, (hr + d) * CS, CS, fx, fy);
-      bctx.globalAlpha = 1;
-    }
-    cur.cells.forEach(([r, c]) => drawCell(bctx, c * CS, r * CS, CS, color));
-    if (phase === 'design') headArrow(bctx, hc * CS, hr * CS, CS, fx, fy);
+    const facing = [hc - nc2, hr - nr2];
+    const drawPiece = (dr, ghost) => cur.cells.forEach(([r, c], i) =>
+      drawSnakeCell(bctx, c * CS, (r + dr) * CS, CS, cur.color, i === 0 ? facing : null, ghost));
+    if (d > 0) drawPiece(d, true); // 섀도우에도 머리 방향이 보인다
+    drawPiece(0, false);
   }
 
   if (shownScore !== score) { shownScore = score; scoreEl.textContent = score; }
