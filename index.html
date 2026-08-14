@@ -99,7 +99,7 @@ const overlay = document.getElementById('overlay');
 const scoreEl = document.getElementById('score');
 const timeEl = document.getElementById('time');
 
-let field, cur, nextP, colorBag, score, lines, placed;
+let field, ids, nextId, cur, nextP, colorBag, score, lines, placed;
 let phase, designLeft;                 // phase: 'design' | 'fall'
 let over, started, paused, acc;
 let shownScore = -1, shownTime = '';
@@ -174,7 +174,8 @@ function hardDrop() {
   lockShape();
 }
 function lockShape() {
-  cur.cells.forEach(([r, c]) => field[r][c] = cur.color);
+  const id = nextId++; // 이 조각의 모양을 기억 — 삭제 후에도 덩어리째 떨어진다
+  cur.cells.forEach(([r, c]) => { field[r][c] = cur.color; ids[r][c] = id; });
   placed++;
   clearConnected();
   if (!over) spawn();
@@ -207,12 +208,48 @@ function findSpanningComponents() {
     }
   return comps;
 }
-function applyGravity() { // 삭제로 뜬 블록은 열마다 아래로 떨어진다
-  for (let c = 0; c < COLS; c++) {
-    let write = ROWS - 1;
-    for (let r = ROWS - 1; r >= 0; r--)
-      if (field[r][c]) field[write--][c] = field[r][c];
-    while (write >= 0) field[write--][c] = 0;
+// 같은 조각 id로 4방향 연결된 셀 묶음 = 강체 덩어리 (삭제로 두 동강 나면 각각 별개)
+function buildChunks() {
+  const seen = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+  const chunks = [];
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++) {
+      if (!field[r][c] || seen[r][c]) continue;
+      const id = ids[r][c];
+      const stack = [[r, c]], cells = [];
+      seen[r][c] = true;
+      while (stack.length) {
+        const [cr, cc] = stack.pop();
+        cells.push([cr, cc]);
+        for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nr = cr + dr, nc = cc + dc;
+          if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+          if (seen[nr][nc] || !field[nr][nc] || ids[nr][nc] !== id) continue;
+          seen[nr][nc] = true;
+          stack.push([nr, nc]);
+        }
+      }
+      chunks.push({ cells, set: new Set(cells.map(([cr, cc]) => cr + ',' + cc)) });
+    }
+  return chunks;
+}
+function chunkCanFall(ch) {
+  return ch.cells.every(([r, c]) => r + 1 < ROWS && (!field[r + 1][c] || ch.set.has((r + 1) + ',' + c)));
+}
+function dropChunk(ch) {
+  const vals = ch.cells.map(([r, c]) => [field[r][c], ids[r][c]]);
+  ch.cells.forEach(([r, c]) => { field[r][c] = 0; ids[r][c] = 0; });
+  ch.cells = ch.cells.map(([r, c]) => [r + 1, c]);
+  ch.cells.forEach(([r, c], i) => { field[r][c] = vals[i][0]; ids[r][c] = vals[i][1]; });
+  ch.set = new Set(ch.cells.map(([r, c]) => r + ',' + c));
+}
+function applyGravity() { // 삭제로 뜬 덩어리는 모양 그대로, 지지될 때까지 한 칸씩 낙하
+  const chunks = buildChunks();
+  let moved = true;
+  while (moved) {
+    moved = false;
+    for (const ch of chunks)
+      if (chunkCanFall(ch)) { dropChunk(ch); moved = true; }
   }
 }
 function clearConnected() {
@@ -222,7 +259,7 @@ function clearConnected() {
     if (!comps.length) break;
     chain++; // 낙하로 새 연결이 생기면 연쇄 — 배율 x2, x3...
     let cells = 0;
-    comps.forEach(comp => comp.forEach(([r, c]) => { field[r][c] = 0; cells++; }));
+    comps.forEach(comp => comp.forEach(([r, c]) => { field[r][c] = 0; ids[r][c] = 0; cells++; }));
     lines += comps.length;
     score += cells * 10 * chain;
     applyGravity();
@@ -243,6 +280,8 @@ function gameOver() {
 }
 function resetGame() {
   field = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+  ids = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+  nextId = 1;
   score = 0; lines = 0; placed = 0;
   over = false; paused = false;
   acc = 0; colorBag = [];
