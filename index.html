@@ -18,6 +18,7 @@
   .panel { background:#141a24; border:1px solid #263042; border-radius:8px; padding:12px; }
   .panel h2 { font-size:12px; letter-spacing:3px; color:#8b949e; margin-bottom:8px; font-weight:600; }
   #score { font-size:26px; color:#58a6ff; font-weight:700; text-align:right; }
+  #time { font-size:26px; color:#4cd964; font-weight:700; text-align:right; }
   canvas.preview { display:block; margin:0 auto; }
   #stage { position:relative; }
   #board { display:block; background:#0d1320; border:2px solid #263042; border-radius:4px; }
@@ -30,22 +31,25 @@
   #overlay .big { font-size:28px; letter-spacing:6px; font-weight:700; color:#58a6ff; }
   #overlay .small { font-size:13px; color:#9aa4b2; line-height:1.9; }
   .keys { font-size:11px; color:#8b949e; line-height:2; }
-  .keys b { color:#c9d1d9; display:inline-block; min-width:54px; font-weight:600; }
+  .keys b { color:#c9d1d9; display:inline-block; min-width:50px; font-weight:600; }
+  .keys .sec { color:#4cd964; letter-spacing:1px; }
 </style>
 </head>
 <body>
 <div id="wrap">
   <div class="side">
     <div class="panel">
-      <h2>HOLD</h2>
-      <canvas id="hold" class="preview"></canvas>
+      <h2>TIME</h2>
+      <div id="time">-</div>
     </div>
     <div class="panel keys">
+      <span class="sec">[설계 5초]</span><br>
+      <b>방향키</b>머리 조종<br>
+      <b>SPACE</b>즉시 드롭<br>
+      <span class="sec">[낙하 중]</span><br>
       <b>&larr; &rarr;</b>이동<br>
-      <b>&uarr;</b>회전<br>
       <b>&darr;</b>소프트드롭<br>
-      <b>SPACE</b>하드드롭<br>
-      <b>R</b>홀드
+      <b>SPACE</b>하드드롭
     </div>
   </div>
 
@@ -53,7 +57,7 @@
     <canvas id="board"></canvas>
     <div id="overlay">
       <div class="big">TETRIS</div>
-      <div class="small"><b>같은 색 덩어리</b>가 좌우 벽에 모두 닿으면 삭제!<br>구불구불해도 이어져 있으면 OK<br>클릭 또는 아무 키나 눌러 시작</div>
+      <div class="small">블록이 나오면 <b>5초</b> 동안 방향키로 머리를 움직여 모양 설계!<br>같은 색 덩어리가 좌우 벽에 모두 닿으면 삭제!<br>클릭 또는 아무 키나 눌러 시작</div>
     </div>
   </div>
 
@@ -73,17 +77,10 @@
 'use strict';
 
 const COLS = 10, ROWS = 20, CS = 30;   // 필드 10x20, 셀 30px
-const PW = 108, PH = 84, PCS = 24;     // 프리뷰 캔버스
+const PW = 108, PH = 84;               // 프리뷰 캔버스
+const DESIGN_MS = 5000;                // 모양 설계 타임
+const MIN_LEN = 4, MAX_LEN = 8;        // 블록 길이 범위
 
-const SHAPES = {
-  I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
-  O: [[1,1],[1,1]],
-  T: [[0,1,0],[1,1,1],[0,0,0]],
-  S: [[0,1,1],[1,1,0],[0,0,0]],
-  Z: [[1,1,0],[0,1,1],[0,0,0]],
-  J: [[1,0,0],[1,1,1],[0,0,0]],
-  L: [[0,0,1],[1,1,1],[0,0,0]],
-};
 // 블록 색 팔레트 — 필드 셀에는 1부터 시작하는 인덱스로 저장(0 = 빈 칸)
 const PALETTE = ['#ff5a5f', '#5b8cff', '#f5c542'];
 
@@ -98,20 +95,16 @@ function initCanvas(id, w, h) {
 }
 const bctx = initCanvas('board', COLS * CS, ROWS * CS);
 const nctx = initCanvas('next', PW, PH);
-const hctx = initCanvas('hold', PW, PH);
 const overlay = document.getElementById('overlay');
 const scoreEl = document.getElementById('score');
+const timeEl = document.getElementById('time');
 
-let field, cur, nextP, held, shapeBag, colorBag, score, lines, placed;
-let over, started, paused, canHold, acc;
-let shownScore = -1;
+let field, cur, nextP, colorBag, score, lines, placed;
+let phase, designLeft;                 // phase: 'design' | 'fall'
+let over, started, paused, acc;
+let shownScore = -1, shownTime = '';
 
 // ---------- 유틸 ----------
-function eachCell(matrix, fn) {
-  for (let r = 0; r < matrix.length; r++)
-    for (let c = 0; c < matrix[r].length; c++)
-      if (matrix[r][c]) fn(r, c);
-}
 function shuffled(arr) {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -120,96 +113,71 @@ function shuffled(arr) {
   }
   return a;
 }
-function takeShape() { // 7-bag 랜덤
-  if (!shapeBag.length) shapeBag = shuffled(Object.keys(SHAPES));
-  return shapeBag.pop();
-}
-function takeColor() { // 색도 bag 방식으로 고르게 배분
+function takeColor() { // 색은 bag 방식으로 고르게 배분
   if (!colorBag.length) colorBag = shuffled(PALETTE.map((_, i) => i + 1));
   return colorBag.pop();
 }
-function makePiece(type, color) {
-  const matrix = SHAPES[type].map(r => r.slice());
-  return { type, color, matrix, x: Math.floor((COLS - matrix[0].length) / 2), y: 0 };
+function makeNext() {
+  return { len: MIN_LEN + Math.floor(Math.random() * (MAX_LEN - MIN_LEN + 1)), color: takeColor() };
 }
-function collides(matrix, x, y) {
-  for (let r = 0; r < matrix.length; r++)
-    for (let c = 0; c < matrix[r].length; c++) {
-      if (!matrix[r][c]) continue;
-      const bx = x + c, by = y + r;
-      if (bx < 0 || bx >= COLS || by >= ROWS) return true;
-      if (by >= 0 && field[by][bx]) return true;
-    }
-  return false;
-}
-function rotateMatrix(m) {
-  const n = m.length;
-  const res = Array.from({ length: n }, () => Array(n).fill(0));
-  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) res[c][n - 1 - r] = m[r][c];
-  return res;
-}
-function active() { return started && !over && !paused && cur; }
 
 // ---------- 게임 로직 ----------
+// cur = { color, cells: [[r,c], ...] } — cells[0]이 머리, 필드 절대좌표
 function spawn() {
-  cur = makePiece(nextP.type, nextP.color);
-  nextP = { type: takeShape(), color: takeColor() };
+  const L = nextP.len, color = nextP.color;
+  const startC = Math.floor((COLS - L) / 2);
+  const cells = [];
+  for (let i = 0; i < L; i++) cells.push([0, startC + L - 1 - i]); // 가로 일자, 머리 = 오른쪽 끝
+  cur = { color, cells };
+  nextP = makeNext();
   drawPreview(nctx, nextP);
+  phase = 'design';
+  designLeft = DESIGN_MS;
   acc = 0;
-  if (collides(cur.matrix, cur.x, cur.y)) gameOver();
+  if (cells.some(([r, c]) => field[r][c])) gameOver(); // 등장 위치가 이미 막힘
 }
-function move(dx) {
-  if (!active()) return;
-  if (!collides(cur.matrix, cur.x + dx, cur.y)) cur.x += dx;
+// 설계 타임: 머리를 한 칸 이동, 몸통은 머리 경로를 따라옴
+function designMove(dr, dc) {
+  const [hr, hc] = cur.cells[0];
+  const nr = hr + dr, nc = hc + dc;
+  if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) return; // 벽: 무시
+  if (field[nr][nc]) return;                                // 쌓인 블록: 무시
+  if (cur.cells.some(([r, c]) => r === nr && c === nc)) {   // 자기 몸 겹침: 페널티 → 즉시 낙하
+    startFall();
+    return;
+  }
+  cur.cells.unshift([nr, nc]);
+  cur.cells.pop();
 }
-function rotate() {
-  if (!active() || cur.type === 'O') return;
-  const m = rotateMatrix(cur.matrix);
-  for (const dy of [0, -1])
-    for (const dx of [0, -1, 1, -2, 2])
-      if (!collides(m, cur.x + dx, cur.y + dy)) {
-        cur.matrix = m; cur.x += dx; cur.y += dy; return;
-      }
+function startFall() { phase = 'fall'; acc = 0; }
+function shapeCanMove(dr, dc) {
+  return cur.cells.every(([r, c]) => {
+    const nr = r + dr, nc = c + dc;
+    return nr < ROWS && nc >= 0 && nc < COLS && !field[nr][nc];
+  });
 }
-function drop() { // 중력 1칸
-  if (!collides(cur.matrix, cur.x, cur.y + 1)) cur.y++;
-  else lock();
+function shiftShape(dr, dc) { cur.cells = cur.cells.map(([r, c]) => [r + dr, c + dc]); }
+function moveSide(dc) {
+  if (phase !== 'fall') return;
+  if (shapeCanMove(0, dc)) shiftShape(0, dc);
+}
+function gravityStep() {
+  if (shapeCanMove(1, 0)) shiftShape(1, 0);
+  else lockShape();
 }
 function softDrop() {
-  if (!active()) return;
-  if (!collides(cur.matrix, cur.x, cur.y + 1)) { cur.y++; score++; acc = 0; }
-  else lock();
+  if (shapeCanMove(1, 0)) { shiftShape(1, 0); score++; acc = 0; }
+  else lockShape();
 }
 function hardDrop() {
-  if (!active()) return;
-  while (!collides(cur.matrix, cur.x, cur.y + 1)) { cur.y++; score += 2; }
-  lock();
+  while (shapeCanMove(1, 0)) { shiftShape(1, 0); score += 2; }
+  lockShape();
 }
-function holdPiece() {
-  if (!active() || !canHold) return;
-  canHold = false;
-  const t = { type: cur.type, color: cur.color };
-  if (held === null) { held = t; spawn(); }
-  else {
-    cur = makePiece(held.type, held.color);
-    held = t;
-    acc = 0;
-    if (collides(cur.matrix, cur.x, cur.y)) gameOver();
-  }
-  drawPreview(hctx, held);
-}
-function lock() {
-  let topOut = false;
-  eachCell(cur.matrix, (r, c) => {
-    const by = cur.y + r, bx = cur.x + c;
-    if (by < 0) { topOut = true; return; }
-    field[by][bx] = cur.color;
-  });
-  if (topOut) { gameOver(); return; }
+function lockShape() {
+  cur.cells.forEach(([r, c]) => field[r][c] = cur.color);
   placed++;
   clearConnected();
-  canHold = true;
-  spawn();
+  if (!over) spawn();
 }
 // 같은 색 4방향 연결 덩어리 중 왼쪽 벽(0열)과 오른쪽 벽(9열)에 모두 닿은 것들을 찾는다
 function findSpanningComponents() {
@@ -260,12 +228,12 @@ function clearConnected() {
     applyGravity();
   }
 }
-function ghostY() {
-  let y = cur.y;
-  while (!collides(cur.matrix, cur.x, y + 1)) y++;
-  return y;
+function dropDist() {
+  let d = 0;
+  while (cur.cells.every(([r, c]) => r + d + 1 < ROWS && !field[r + d + 1][c])) d++;
+  return d;
 }
-function dropInterval() { // 색 맞추기 규칙에선 줄 삭제가 드물어 놓은 블록 수 기준으로 가속
+function dropInterval() { // 놓은 블록 수 기준으로 가속
   return Math.max(90, 750 - Math.floor(placed / 25) * 60);
 }
 
@@ -277,13 +245,11 @@ function resetGame() {
   field = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
   score = 0; lines = 0; placed = 0;
   over = false; paused = false;
-  held = null; canHold = true;
-  acc = 0; shapeBag = []; colorBag = [];
-  drawPreview(hctx, null);
-  nextP = { type: takeShape(), color: takeColor() };
+  acc = 0; colorBag = [];
+  nextP = makeNext();
   spawn();
 }
-function start() { started = true; paused = false; acc = 0; overlay.classList.add('hidden'); }
+function start() { started = true; paused = false; overlay.classList.add('hidden'); }
 function showOverlay(big, small) {
   overlay.innerHTML = '<div class="big">' + big + '</div><div class="small">' + small + '</div>';
   overlay.classList.remove('hidden');
@@ -313,18 +279,19 @@ function drawCell(ctx, px, py, size, color, ghost) {
   ctx.fillRect(px + p, py + p + s - b, s, b);
   ctx.fillRect(px + p + s - b, py + p, b, s);
 }
-function drawPreview(ctx, piece) {
+function headDot(ctx, px, py, size) { // 설계 중 조종하는 머리 표시
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.beginPath();
+  ctx.arc(px + size / 2, py + size / 2, Math.max(2, size * 0.16), 0, Math.PI * 2);
+  ctx.fill();
+}
+function drawPreview(ctx, p) {
   ctx.clearRect(0, 0, PW, PH);
-  if (!piece) return;
-  const m = SHAPES[piece.type];
-  let minR = 9, maxR = -1, minC = 9, maxC = -1;
-  eachCell(m, (r, c) => {
-    minR = Math.min(minR, r); maxR = Math.max(maxR, r);
-    minC = Math.min(minC, c); maxC = Math.max(maxC, c);
-  });
-  const ox = (PW - (maxC - minC + 1) * PCS) / 2;
-  const oy = (PH - (maxR - minR + 1) * PCS) / 2;
-  eachCell(m, (r, c) => drawCell(ctx, ox + (c - minC) * PCS, oy + (r - minR) * PCS, PCS, PALETTE[piece.color - 1]));
+  if (!p) return;
+  const s = 12; // 최대 8칸도 들어가게 작은 셀
+  const ox = (PW - p.len * s) / 2, oy = (PH - s) / 2;
+  for (let i = 0; i < p.len; i++) drawCell(ctx, ox + i * s, oy, s, PALETTE[p.color - 1]);
+  headDot(ctx, ox + (p.len - 1) * s, oy, s);
 }
 function draw() {
   const W = COLS * CS, H = ROWS * CS;
@@ -343,33 +310,47 @@ function draw() {
 
   if (cur && !over) {
     const color = PALETTE[cur.color - 1];
-    const gy = ghostY();
-    if (gy > cur.y) eachCell(cur.matrix, (r, c) => {
-      drawCell(bctx, (cur.x + c) * CS, (gy + r) * CS, CS, color, true);
-    });
-    eachCell(cur.matrix, (r, c) => {
-      if (cur.y + r >= 0) drawCell(bctx, (cur.x + c) * CS, (cur.y + r) * CS, CS, color);
-    });
+    const d = dropDist();
+    if (d > 0) cur.cells.forEach(([r, c]) => drawCell(bctx, c * CS, (r + d) * CS, CS, color, true));
+    cur.cells.forEach(([r, c]) => drawCell(bctx, c * CS, r * CS, CS, color));
+    if (phase === 'design') {
+      const [hr, hc] = cur.cells[0];
+      headDot(bctx, hc * CS, hr * CS, CS);
+    }
   }
 
   if (shownScore !== score) { shownScore = score; scoreEl.textContent = score; }
+  const t = (cur && !over && phase === 'design') ? (Math.max(0, designLeft) / 1000).toFixed(1) : '-';
+  if (shownTime !== t) {
+    shownTime = t;
+    timeEl.textContent = t;
+    timeEl.style.color = (t !== '-' && +t <= 1.5) ? '#ff5a5f' : '#4cd964';
+  }
 }
 
 // ---------- 입력 ----------
-const GAME_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'Space', 'KeyR', 'Enter'];
+const GAME_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'Space', 'Enter'];
 document.addEventListener('keydown', e => {
   if (GAME_KEYS.includes(e.code)) e.preventDefault();
   if (over) { if (e.code === 'Enter') { resetGame(); start(); } return; }
   if (!started) { start(); return; }
   if (paused) { paused = false; overlay.classList.add('hidden'); return; }
-  if (e.repeat && (e.code === 'Space' || e.code === 'KeyR' || e.code === 'ArrowUp')) return;
-  switch (e.code) {
-    case 'ArrowLeft': move(-1); break;
-    case 'ArrowRight': move(1); break;
-    case 'ArrowDown': softDrop(); break;
-    case 'ArrowUp': rotate(); break;
-    case 'Space': hardDrop(); break;
-    case 'KeyR': holdPiece(); break;
+  if (e.repeat && e.code === 'Space') return;
+  if (phase === 'design') {
+    switch (e.code) {
+      case 'ArrowLeft': designMove(0, -1); break;
+      case 'ArrowRight': designMove(0, 1); break;
+      case 'ArrowUp': designMove(-1, 0); break;
+      case 'ArrowDown': designMove(1, 0); break;
+      case 'Space': startFall(); hardDrop(); break; // 조기 확정 + 즉시 드롭
+    }
+  } else {
+    switch (e.code) {
+      case 'ArrowLeft': moveSide(-1); break;
+      case 'ArrowRight': moveSide(1); break;
+      case 'ArrowDown': softDrop(); break;
+      case 'Space': hardDrop(); break;
+    }
   }
 });
 overlay.addEventListener('click', () => {
@@ -387,9 +368,14 @@ function frame(t) {
   const dt = Math.min(t - rafLast, 250);
   rafLast = t;
   if (started && !over && !paused) {
-    acc += dt;
-    let iv = dropInterval();
-    while (acc >= iv && !over) { acc -= iv; drop(); iv = dropInterval(); }
+    if (phase === 'design') {
+      designLeft -= dt;
+      if (designLeft <= 0) startFall();
+    } else {
+      acc += dt;
+      let iv = dropInterval();
+      while (acc >= iv && !over && phase === 'fall') { acc -= iv; gravityStep(); iv = dropInterval(); }
+    }
   }
   draw();
   requestAnimationFrame(frame);
