@@ -115,6 +115,10 @@ let phase, designLeft;                 // phase: 'design' | 'fall'
 let over, started, paused, acc;
 let shownScore = -1, shownTime = '';
 
+// 삭제 이펙트 상태 — 디졸브 조각 / 가로 섬광 / 화면 흔들림 / 히트스톱
+const FX_MS = 420, FX_ROW_MS = 170, FX_N = 4; // FX_N x FX_N 조각으로 부서진다
+let fx = [], fxRows = [], fxT = 0, shake = 0, hitstop = 0;
+
 // ---------- 유틸 ----------
 function shuffled(arr) {
   const a = arr.slice();
@@ -280,11 +284,29 @@ function clearConnected() {
     if (!comps.length) break;
     chain++; // 낙하로 새 연결이 생기면 연쇄 — 배율 x2, x3...
     let cells = 0;
-    comps.forEach(comp => comp.forEach(([r, c]) => { field[r][c] = 0; ids[r][c] = 0; heads[r][c] = 0; cells++; }));
+    const cleared = [];
+    comps.forEach(comp => comp.forEach(([r, c]) => {
+      cleared.push([r, c, field[r][c], heads[r][c]]);
+      field[r][c] = 0; ids[r][c] = 0; heads[r][c] = 0; cells++;
+    }));
+    spawnClearFx(cleared, chain);
     lines += comps.length;
     score += cells * 10 * chain;
     applyGravity();
   }
+}
+// 삭제된 칸들을 디졸브 조각으로 바꾸고, 흔들림/히트스톱으로 타격감을 준다
+function spawnClearFx(cleared, chain) {
+  const rows = new Set();
+  cleared.forEach(([r, c, color, headCode]) => {
+    const seed = [], jit = [];
+    for (let i = 0; i < FX_N * FX_N; i++) { seed.push(0.2 + Math.random() * 0.8); jit.push(Math.random()); }
+    fx.push({ r, c, color, head: headCode, born: fxT, seed, jit });
+    rows.add(r);
+  });
+  rows.forEach(r => fxRows.push({ r, born: fxT }));
+  shake = Math.min(18, shake + 6 + cleared.length * 0.25 + (chain - 1) * 4);
+  hitstop = Math.max(hitstop, 90 + (chain - 1) * 40);
 }
 function dropDist() {
   let d = 0;
@@ -307,6 +329,7 @@ function resetGame() {
   score = 0; lines = 0; placed = 0;
   over = false; paused = false;
   acc = 0; colorBag = [];
+  fx = []; fxRows = []; shake = 0; hitstop = 0;
   nextP = makeNext();
   spawn();
 }
@@ -371,10 +394,46 @@ function drawPreview(ctx, p) {
   for (let i = 0; i < p.len; i++)
     drawSnakeCell(ctx, ox + i * s, oy, s, p.color, i === headI ? [p.dir, 0] : null);
 }
+// 사라지는 칸: 가로 섬광 → 조각들이 흩어지며 페이드아웃
+function drawFx() {
+  for (const f of fxRows) {
+    const p = (fxT - f.born) / FX_ROW_MS;
+    if (p >= 1) continue;
+    bctx.globalAlpha = (1 - p) * 0.55;
+    bctx.fillStyle = '#fff';
+    bctx.fillRect(0, f.r * CS + CS * (0.12 + p * 0.35), COLS * CS, CS * (0.76 - p * 0.7));
+  }
+  for (const f of fx) {
+    const p = (fxT - f.born) / FX_MS;
+    if (p >= 1) continue;
+    const img = f.head ? HEAD_IMGS[f.color - 1] : BODY_IMGS[f.color - 1];
+    const ok = imgReady(img);
+    const ts = CS / FX_N, ss = (ok ? img.naturalWidth : 16) / FX_N;
+    const x = f.c * CS, y = f.r * CS;
+    bctx.fillStyle = PALETTE[f.color - 1];
+    for (let i = 0; i < FX_N * FX_N; i++) {
+      if (f.seed[i] < p) continue;                       // 이 조각은 이미 흩어져 사라짐
+      const tx = i % FX_N, ty = (i / FX_N) | 0;
+      const jx = (f.jit[i] * 2 - 1) * p * 15;            // 좌우로 튀고
+      const jy = -p * p * 24 - p * 5;                    // 살짝 떠오른다
+      bctx.globalAlpha = Math.max(0, 1 - p * 0.85);
+      if (ok) bctx.drawImage(img, tx * ss, ty * ss, ss, ss, x + tx * ts + jx, y + ty * ts + jy, ts, ts);
+      else bctx.fillRect(x + tx * ts + jx, y + ty * ts + jy, ts, ts);
+    }
+    if (p < 0.3) {                                       // 터지는 순간 백색 섬광
+      bctx.globalAlpha = (1 - p / 0.3) * 0.9;
+      bctx.fillStyle = '#fff';
+      bctx.fillRect(x, y, CS, CS);
+    }
+  }
+  bctx.globalAlpha = 1;
+}
 function draw() {
   const W = COLS * CS, H = ROWS * CS;
   bctx.fillStyle = '#0d1320';
   bctx.fillRect(0, 0, W, H);
+  bctx.save();
+  if (shake > 0.2) bctx.translate((Math.random() * 2 - 1) * shake, (Math.random() * 2 - 1) * shake);
   bctx.strokeStyle = 'rgba(255,255,255,0.045)';
   bctx.lineWidth = 1;
   bctx.beginPath();
@@ -396,6 +455,9 @@ function draw() {
     if (d > 0) drawPiece(d, true); // 섀도우에도 머리 방향이 보인다
     drawPiece(0, false);
   }
+
+  if (fx.length || fxRows.length) drawFx();
+  bctx.restore();
 
   if (shownScore !== score) { shownScore = score; scoreEl.textContent = score; }
   const t = (cur && !over && phase === 'design') ? (Math.max(0, designLeft) / 1000).toFixed(1) : '-';
@@ -445,8 +507,15 @@ let rafLast = performance.now();
 function frame(t) {
   const dt = Math.min(t - rafLast, 250);
   rafLast = t;
+
+  fxT += dt; // 이펙트 시계는 일시정지와 무관하게 흐른다
+  if (fx.length) fx = fx.filter(f => fxT - f.born < FX_MS);
+  if (fxRows.length) fxRows = fxRows.filter(f => fxT - f.born < FX_ROW_MS);
+  shake = Math.max(0, shake - dt * 0.05);
+
   if (started && !over && !paused) {
-    if (phase === 'design') {
+    if (hitstop > 0) hitstop -= dt; // 터진 직후 잠깐 멈춤 = 타격감
+    else if (phase === 'design') {
       designLeft -= dt;
       if (designLeft <= 0) startFall();
     } else {
