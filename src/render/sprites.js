@@ -7,6 +7,7 @@ import { LINK } from '../game/dirs.js';
  *  - 머리   : 왼쪽을 보고, 몸통은 오른쪽으로 이어진다
  *  - 몸통   : 좌우로 이어지는 가로 세그먼트
  *  - 코너   : 왼쪽 ↔ 아래로 꺾인다
+ *  - 꼬리   : 왼쪽이 몸통과 이어지고 오른쪽으로 뾰족해진다
  * 나머지 방향은 회전(시계방향)이나 좌우반전으로 만든다.
  */
 const CORNER_ANGLE = {
@@ -17,19 +18,25 @@ const CORNER_ANGLE = {
 };
 const VERTICAL = new Set([LINK.UP | LINK.DOWN, LINK.UP, LINK.DOWN]);
 
+/** 원본에서 왼쪽을 향하던 부분(머리의 코, 꼬리의 이음새)이 vec 쪽을 보게 하는 자세 */
+function orient([dx, dy]) {
+  if (dx > 0) return { angle: 0, flip: true };        // 오른쪽 = 좌우반전
+  if (dy < 0) return { angle: Math.PI / 2 };          // 위
+  if (dy > 0) return { angle: -Math.PI / 2 };         // 아래
+  return { angle: 0 };                                // 왼쪽 = 원본
+}
+
 /**
  * 한 칸에 무엇을 어떤 자세로 그릴지 고른다.
- * @param {object} segment - { head: [dx,dy]|null, links: 연결 비트 }
+ * @param {object} segment
+ *   head  : 머리면 바라보는 방향 [dx,dy]
+ *   tail  : 꼬리면 몸통과 이어지는 방향 [dx,dy]
+ *   links : 몸이 이어지는 방향 비트
  */
-export function pickSprite(color, { head = null, links = 0 } = {}) {
+export function pickSprite(color, { head = null, tail = null, links = 0 } = {}) {
   const index = color - 1;
-  if (head) {
-    const [dx, dy] = head;
-    if (dx > 0) return { img: sprites.heads[index], angle: 0, flip: true };   // 오른쪽 = 좌우반전
-    if (dy < 0) return { img: sprites.heads[index], angle: Math.PI / 2 };     // 위
-    if (dy > 0) return { img: sprites.heads[index], angle: -Math.PI / 2 };    // 아래
-    return { img: sprites.heads[index], angle: 0 };                          // 왼쪽 = 원본
-  }
+  if (head) return { img: sprites.heads[index], ...orient(head) };
+  if (tail) return { img: sprites.tails[index], ...orient(tail) };
   const corner = CORNER_ANGLE[links];
   if (corner !== undefined) return { img: sprites.corners[index], angle: corner };
   return { img: sprites.bodies[index], angle: VERTICAL.has(links) ? Math.PI / 2 : 0 };

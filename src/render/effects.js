@@ -30,13 +30,13 @@ export class Effects {
   spawn(rounds) {
     for (const { cells, chain } of rounds) {
       const rows = new Set();
-      for (const { r, c, color, head, link } of cells) {
+      for (const { r, c, color, head, tail, link } of cells) {
         const seed = [], jitter = [];
         for (let i = 0; i < FX.split * FX.split; i++) {
           seed.push(0.2 + this.rng() * 0.8);   // 조각마다 사라지는 시점
           jitter.push(this.rng());             // 조각마다 튀는 방향
         }
-        this.cells.push({ r, c, color, head, link, born: this.time, seed, jitter });
+        this.cells.push({ r, c, color, head, tail, link, born: this.time, seed, jitter });
         rows.add(r);
       }
       for (const r of rows) this.rows.push({ r, born: this.time });
@@ -81,7 +81,7 @@ export class Effects {
       const p = (this.time - f.born) / FX.dissolveMs;
       if (p >= 1) continue;
       // 흩어지는 조각이라 회전까지는 따지지 않고, 어떤 그림인지만 맞춘다
-      const { img } = pickSprite(f.color, { head: dirVec(f.head), links: f.link });
+      const { img } = pickSprite(f.color, { head: dirVec(f.head), tail: dirVec(f.tail), links: f.link });
       const ok = isReady(img);
       const tile = CELL / n;
       const src = (ok ? img.naturalWidth : 16) / n;

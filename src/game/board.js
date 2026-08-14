@@ -1,5 +1,5 @@
 import { COLS, DIRS, ROWS } from '../config.js';
-import { linksInPath } from './dirs.js';
+import { dirCode, linksInPath } from './dirs.js';
 
 const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const grid = (rows, cols) => Array.from({ length: rows }, () => Array(cols).fill(0));
@@ -10,6 +10,7 @@ const grid = (rows, cols) => Array.from({ length: rows }, () => Array(cols).fill
  *  - color   : 색 번호(1~3), 0이면 빈 칸
  *  - pieceId : 어느 조각에서 왔는지 → 삭제 후 그 모양 그대로 떨어뜨리는 근거
  *  - head    : 머리 칸이면 바라보던 방향 코드(1~4), 몸통이면 0
+ *  - tail    : 꼬리 칸이면 몸통과 이어지는 방향 코드(1~4), 아니면 0
  *  - link    : 몸이 어느 쪽으로 이어지는지(비트) → 직선/코너 스프라이트 선택에 쓰인다
  */
 export class Board {
@@ -23,6 +24,7 @@ export class Board {
     this.color = grid(this.rows, this.cols);
     this.pieceId = grid(this.rows, this.cols);
     this.head = grid(this.rows, this.cols);
+    this.tail = grid(this.rows, this.cols);
     this.link = grid(this.rows, this.cols);
     this.nextId = 1;
   }
@@ -39,10 +41,17 @@ export class Board {
       this.color[r][c] = color;
       this.pieceId[r][c] = id;
       this.head[r][c] = 0;
+      this.tail[r][c] = 0;
       this.link[r][c] = linksInPath(cells, i); // 지나온 경로를 기억해 코너를 그린다
     });
     const [hr, hc] = cells[0];
     this.head[hr][hc] = headCode;
+
+    if (cells.length > 1) { // 꼬리 끝은 몸통 쪽을 향한 꼬리 스프라이트로 남는다
+      const [tr, tc] = cells[cells.length - 1];
+      const [pr, pc] = cells[cells.length - 2];
+      this.tail[tr][tc] = dirCode(pc - tc, pr - tr);
+    }
     return id;
   }
 
@@ -51,6 +60,7 @@ export class Board {
       this.color[r][c] = 0;
       this.pieceId[r][c] = 0;
       this.head[r][c] = 0;
+      this.tail[r][c] = 0;
       this.link[r][c] = 0;
     }
   }
@@ -131,11 +141,11 @@ export class Board {
 
   #dropChunk(chunk) {
     const saved = chunk.cells.map(([r, c]) =>
-      [this.color[r][c], this.pieceId[r][c], this.head[r][c], this.link[r][c]]);
+      [this.color[r][c], this.pieceId[r][c], this.head[r][c], this.tail[r][c], this.link[r][c]]);
     this.remove(chunk.cells);
     chunk.cells = chunk.cells.map(([r, c]) => [r + 1, c]);
     chunk.cells.forEach(([r, c], i) => {
-      [this.color[r][c], this.pieceId[r][c], this.head[r][c], this.link[r][c]] = saved[i];
+      [this.color[r][c], this.pieceId[r][c], this.head[r][c], this.tail[r][c], this.link[r][c]] = saved[i];
     });
     chunk.set = new Set(chunk.cells.map(([r, c]) => r + ',' + c));
   }

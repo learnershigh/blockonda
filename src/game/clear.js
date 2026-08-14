@@ -17,6 +17,7 @@ export function resolveClears(board) {
       r, c,
       color: board.color[r][c],
       head: board.head[r][c],
+      tail: board.tail[r][c],
       link: board.linksAt(r, c),
     }));
     board.remove(flat);

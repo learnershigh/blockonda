@@ -19,6 +19,8 @@ describe('Board', () => {
     assert.equal(board.pieceId[19][3], id);
     assert.equal(board.head[19][5], 2, '머리 칸');
     assert.equal(board.head[19][4], 0, '몸통 칸');
+    assert.equal(board.tail[19][3], 2, '꼬리 칸은 몸통(오른쪽) 쪽을 향한다');
+    assert.equal(board.tail[19][4], 0);
   });
 
   describe('linksAt (코너 스프라이트 판단용 연결 정보)', () => {
@@ -123,15 +125,15 @@ describe('Board', () => {
       assert.equal(board.color[floor][3], 2);
     });
 
-    it('머리 정보가 낙하 후에도 따라온다', () => {
+    it('머리/꼬리 정보가 낙하 후에도 따라온다', () => {
       const board = new Board();
       const floor = board.rows - 1;
-      put(board, 10, 4, 1, 400, 2);
-      put(board, 10, 5, 1, 400, 0);
+      board.lock([[10, 4], [10, 5], [10, 6]], 1, 1);
       board.applyGravity();
-      assert.equal(board.head[floor][4], 2, '머리 방향 코드 유지');
-      assert.equal(board.head[floor][5], 0);
+      assert.equal(board.head[floor][4], 1, '머리 방향 코드 유지');
+      assert.equal(board.tail[floor][6], 1, '꼬리 방향 코드 유지');
       assert.equal(board.head[10][4], 0, '원래 자리는 비어야 한다');
+      assert.equal(board.tail[10][6], 0);
     });
   });
 });

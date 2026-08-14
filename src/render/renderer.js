@@ -30,10 +30,12 @@ export function drawPreview(ctx, piece) {
   const ox = (PREVIEW.w - piece.len * cell) / 2;
   const oy = (PREVIEW.h - cell) / 2;
   const headIndex = piece.dir > 0 ? piece.len - 1 : 0; // 머리 = 바라보는 방향 쪽 끝
+  const tailIndex = piece.dir > 0 ? 0 : piece.len - 1;   // 머리 반대쪽 끝
   for (let i = 0; i < piece.len; i++) {
     const head = i === headIndex ? [piece.dir, 0] : null;
+    const tail = i === tailIndex ? [piece.dir, 0] : null; // 몸통은 머리 쪽으로 이어진다
     const links = (i > 0 ? LINK.LEFT : 0) | (i < piece.len - 1 ? LINK.RIGHT : 0);
-    drawSegment(ctx, ox + i * cell, oy, cell, piece.color, { head, links });
+    drawSegment(ctx, ox + i * cell, oy, cell, piece.color, { head, tail, links });
   }
 }
 
@@ -52,7 +54,11 @@ function drawStack(ctx, board) {
     for (let c = 0; c < board.cols; c++) {
       const color = board.color[r][c];
       if (!color) continue;
-      const segment = { head: dirVec(board.head[r][c]), links: board.linksAt(r, c) };
+      const segment = {
+        head: dirVec(board.head[r][c]),
+        tail: dirVec(board.tail[r][c]),
+        links: board.linksAt(r, c),
+      };
       drawSegment(ctx, c * CELL, r * CELL, CELL, color, segment);
     }
   }
@@ -62,8 +68,13 @@ function drawSnake(ctx, game) {
   const { snake, board } = game;
   const facing = snake.facing;
   const distance = snake.dropDistance(board);
+  const last = snake.cells.length - 1;
   const paint = (offset, ghost) => snake.cells.forEach(([r, c], i) => {
-    const segment = { head: i === 0 ? facing : null, links: snake.linksAt(i) };
+    const segment = {
+      head: i === 0 ? facing : null,
+      tail: i === last ? snake.tailDir : null,
+      links: snake.linksAt(i),
+    };
     drawSegment(ctx, c * CELL, (r + offset) * CELL, CELL, snake.color, segment, ghost);
   });
 

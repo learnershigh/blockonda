@@ -41,6 +41,13 @@ export class Snake {
   /** index 칸이 앞뒤 칸으로 이어지는 방향 비트 (코너 스프라이트 판단용) */
   linksAt(index) { return linksInPath(this.cells, index); }
 
+  /** 꼬리 끝이 몸통과 이어지는 방향 [dx, dy] */
+  get tailDir() {
+    const [tr, tc] = this.cells[this.cells.length - 1];
+    const [pr, pc] = this.cells[this.cells.length - 2];
+    return [pc - tc, pr - tr];
+  }
+
   /** 설계 타임: 머리를 한 칸 옮기고 몸통이 따라온다 (길이는 그대로) */
   turn(dx, dy, board) {
     const [hr, hc] = this.head;

@@ -16,6 +16,7 @@ const { LINK } = await import('../src/game/dirs.js');
 const heads = draws => draws.filter(d => /Snake_Head/.test(d.src));
 const bodies = draws => draws.filter(d => /Snake_Body\d/.test(d.src));
 const corners = draws => draws.filter(d => /Snake_BodyCorner/.test(d.src));
+const tails = draws => draws.filter(d => /Snake_Tail/.test(d.src));
 
 describe('렌더링', () => {
   let ctx;
@@ -44,6 +45,22 @@ describe('렌더링', () => {
       drawSegment(ctx, 0, 0, CELL, 3, { links: LINK.LEFT | LINK.RIGHT });
       assert.match(ctx.draws[0].src, /Snake_Body02\.png$/);
     });
+  });
+
+  describe('꼬리 방향', () => {
+    const cases = [
+      [[-1, 0], '왼쪽'], [[1, 0], '오른쪽'], [[0, -1], '위'], [[0, 1], '아래'],
+    ];
+    for (const [toward, label] of cases) {
+      it(`몸통이 ${label}에 있으면 그쪽으로 이어 붙는다`, () => {
+        drawSegment(ctx, 0, 0, CELL, 1, { tail: toward });
+        const [draw] = ctx.draws;
+        assert.match(draw.src, /Snake_Tail00\.png$/);
+        // 원본 꼬리는 왼쪽이 이음새 — 그 면이 몸통 쪽을 향해야 한다
+        assert.deepEqual(draw.mapDir([-1, 0]), toward);
+        assert.deepEqual([draw.x, draw.y], [CELL / 2, CELL / 2]);
+      });
+    }
   });
 
   describe('몸통 방향', () => {
@@ -94,12 +111,17 @@ describe('렌더링', () => {
       it(`머리가 ${dir > 0 ? '오른' : '왼'}쪽 끝에서 그 방향을 본다`, () => {
         drawPreview(ctx, { len: 5, color: 2, dir });
         assert.equal(heads(ctx.draws).length, 1);
-        assert.equal(bodies(ctx.draws).length, 4);
+        assert.equal(bodies(ctx.draws).length, 3);
+        assert.equal(tails(ctx.draws).length, 1);
 
         const head = heads(ctx.draws)[0];
         assert.equal(head.nose[0], dir);
         const xs = ctx.draws.map(d => d.x);
         assert.equal(head.x, dir > 0 ? Math.max(...xs) : Math.min(...xs));
+
+        const tail = tails(ctx.draws)[0];
+        assert.ok(tail, '반대쪽 끝은 꼬리');
+        assert.equal(tail.x, dir > 0 ? Math.min(...xs) : Math.max(...xs));
       });
     }
   });
@@ -145,7 +167,8 @@ describe('렌더링', () => {
       const solid = ctx.draws.filter(d => d.alpha === 1);
       assert.equal(corners(solid).length, 1, '꺾인 칸 하나가 코너');
       assert.equal(heads(solid).length, 1);
-      assert.equal(bodies(solid).length, 2);
+      assert.equal(tails(solid).length, 1);
+      assert.equal(bodies(solid).length, 1);
     });
 
     it('꺾지 않으면 코너가 없다', () => {
@@ -166,9 +189,11 @@ describe('렌더링', () => {
       game.input(ACTION.SPACE);
 
       drawBoard(ctx, game, null);
-      const stackHeads = heads(ctx.draws.filter(d => d.alpha === 1 && d.y > (ROWS - 1) * CELL));
-      assert.equal(stackHeads.length, 1);
-      assert.deepEqual(stackHeads[0].nose, [1, 0]);
+      const stack = ctx.draws.filter(d => d.alpha === 1 && d.y > (ROWS - 1) * CELL);
+      assert.equal(heads(stack).length, 1);
+      assert.deepEqual(heads(stack)[0].nose, [1, 0]);
+      assert.equal(tails(stack).length, 1, '꼬리도 남는다');
+      assert.deepEqual(tails(stack)[0].mapDir([-1, 0]), [1, 0], '꼬리는 몸통 쪽을 향한다');
     });
   });
 });
