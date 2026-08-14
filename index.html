@@ -118,16 +118,21 @@ function takeColor() { // 색은 bag 방식으로 고르게 배분
   return colorBag.pop();
 }
 function makeNext() {
-  return { len: MIN_LEN + Math.floor(Math.random() * (MAX_LEN - MIN_LEN + 1)), color: takeColor() };
+  return {
+    len: MIN_LEN + Math.floor(Math.random() * (MAX_LEN - MIN_LEN + 1)),
+    color: takeColor(),
+    dir: Math.random() < 0.5 ? -1 : 1, // 머리가 보는 방향: -1 왼쪽, +1 오른쪽
+  };
 }
 
 // ---------- 게임 로직 ----------
 // cur = { color, cells: [[r,c], ...] } — cells[0]이 머리, 필드 절대좌표
 function spawn() {
-  const L = nextP.len, color = nextP.color;
-  const col = Math.floor((COLS - 1) / 2);
+  const L = nextP.len, color = nextP.color, dir = nextP.dir;
+  const startC = Math.floor((COLS - L) / 2);
   const cells = [];
-  for (let i = 0; i < L; i++) cells.push([L - 1 - i, col]); // 세로 일자, 머리 = 맨 아래 칸(아래를 봄)
+  // 가로 일자, 머리는 바라보는 방향 쪽 끝 칸 (dir +1 오른쪽 끝 / -1 왼쪽 끝)
+  for (let i = 0; i < L; i++) cells.push([0, dir > 0 ? startC + L - 1 - i : startC + i]);
   cur = { color, cells };
   nextP = makeNext();
   drawPreview(nctx, nextP);
@@ -320,19 +325,25 @@ function drawCell(ctx, px, py, size, color, ghost) {
   ctx.fillRect(px + p, py + p + s - b, s, b);
   ctx.fillRect(px + p + s - b, py + p, b, s);
 }
-function headDot(ctx, px, py, size) { // 설계 중 조종하는 머리 표시
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+// 머리 표시 — 바라보는 방향(dx, dy)으로 뾰족한 삼각형
+function headArrow(ctx, px, py, size, dx, dy) {
+  const cx = px + size / 2, cy = py + size / 2, r = Math.max(3, size * 0.3);
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
   ctx.beginPath();
-  ctx.arc(px + size / 2, py + size / 2, Math.max(2, size * 0.16), 0, Math.PI * 2);
+  ctx.moveTo(cx + dx * r, cy + dy * r);                                   // 꼭짓점 = 진행 방향
+  ctx.lineTo(cx - dx * r + dy * r * 0.85, cy - dy * r + dx * r * 0.85);
+  ctx.lineTo(cx - dx * r - dy * r * 0.85, cy - dy * r - dx * r * 0.85);
+  ctx.closePath();
   ctx.fill();
 }
 function drawPreview(ctx, p) {
   ctx.clearRect(0, 0, PW, PH);
   if (!p) return;
-  const s = 13; // 최대 6칸 세로가 들어가는 크기
-  const ox = (PW - s) / 2, oy = (PH - p.len * s) / 2;
-  for (let i = 0; i < p.len; i++) drawCell(ctx, ox, oy + i * s, s, PALETTE[p.color - 1]);
-  headDot(ctx, ox, oy + (p.len - 1) * s, s); // 머리 = 맨 아래
+  const s = 15; // 최대 6칸 가로가 들어가는 크기
+  const ox = (PW - p.len * s) / 2, oy = (PH - s) / 2;
+  for (let i = 0; i < p.len; i++) drawCell(ctx, ox + i * s, oy, s, PALETTE[p.color - 1]);
+  const headI = p.dir > 0 ? p.len - 1 : 0; // 머리 = 바라보는 방향 쪽 끝
+  headArrow(ctx, ox + headI * s, oy, s, p.dir, 0);
 }
 function draw() {
   const W = COLS * CS, H = ROWS * CS;
@@ -355,8 +366,8 @@ function draw() {
     if (d > 0) cur.cells.forEach(([r, c]) => drawCell(bctx, c * CS, (r + d) * CS, CS, color, true));
     cur.cells.forEach(([r, c]) => drawCell(bctx, c * CS, r * CS, CS, color));
     if (phase === 'design') {
-      const [hr, hc] = cur.cells[0];
-      headDot(bctx, hc * CS, hr * CS, CS);
+      const [hr, hc] = cur.cells[0], [nr2, nc2] = cur.cells[1]; // 목 → 머리 = 바라보는 방향
+      headArrow(bctx, hc * CS, hr * CS, CS, hc - nc2, hr - nr2);
     }
   }
 
