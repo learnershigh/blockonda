@@ -363,12 +363,16 @@ function draw() {
   if (cur && !over) {
     const color = PALETTE[cur.color - 1];
     const d = dropDist();
-    if (d > 0) cur.cells.forEach(([r, c]) => drawCell(bctx, c * CS, (r + d) * CS, CS, color, true));
-    cur.cells.forEach(([r, c]) => drawCell(bctx, c * CS, r * CS, CS, color));
-    if (phase === 'design') {
-      const [hr, hc] = cur.cells[0], [nr2, nc2] = cur.cells[1]; // 목 → 머리 = 바라보는 방향
-      headArrow(bctx, hc * CS, hr * CS, CS, hc - nc2, hr - nr2);
+    const [hr, hc] = cur.cells[0], [nr2, nc2] = cur.cells[1]; // 목 → 머리 = 바라보는 방향
+    const fx = hc - nc2, fy = hr - nr2;
+    if (d > 0) {
+      cur.cells.forEach(([r, c]) => drawCell(bctx, c * CS, (r + d) * CS, CS, color, true));
+      bctx.globalAlpha = 0.4; // 섀도우에도 머리 방향 표시
+      headArrow(bctx, hc * CS, (hr + d) * CS, CS, fx, fy);
+      bctx.globalAlpha = 1;
     }
+    cur.cells.forEach(([r, c]) => drawCell(bctx, c * CS, r * CS, CS, color));
+    if (phase === 'design') headArrow(bctx, hc * CS, hr * CS, CS, fx, fy);
   }
 
   if (shownScore !== score) { shownScore = score; scoreEl.textContent = score; }
