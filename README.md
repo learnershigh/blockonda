@@ -2,7 +2,7 @@
 
 뱀처럼 모양을 직접 설계해서 쌓는 테트리스. 빌드 도구 없이 브라우저에서 바로 도는 ES 모듈 웹게임.
 
-플레이: https://learnershigh.github.io/tetris/
+플레이: https://learnershigh.github.io/blockonda/
 
 ## 규칙
 
